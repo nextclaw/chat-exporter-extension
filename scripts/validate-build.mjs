@@ -6,6 +6,10 @@ const required = [
   "dist/manifest.json",
   "dist/popup.html",
   "dist/assets/content.js",
+  "dist/icons/icon-16.png",
+  "dist/icons/icon-32.png",
+  "dist/icons/icon-48.png",
+  "dist/icons/icon-128.png",
 ];
 
 await Promise.all(required.map((path) => access(resolve(root, path))));

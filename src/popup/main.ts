@@ -53,6 +53,36 @@ async function sendMessage<T>(tabId: number, message: unknown): Promise<T> {
   });
 }
 
+async function injectContentScript(tabId: number): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["assets/content.js"],
+  });
+}
+
+function isMissingContentScriptError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /Receiving end does not exist|Could not establish connection/i.test(error.message);
+}
+
+async function sendMessageWithInjection<T>(tab: chrome.tabs.Tab, message: unknown): Promise<T> {
+  if (!tab.id) {
+    throw new Error("No active tab.");
+  }
+
+  try {
+    return await sendMessage<T>(tab.id, message);
+  } catch (error) {
+    if (!isMissingContentScriptError(error)) {
+      throw error;
+    }
+    await injectContentScript(tab.id);
+    return sendMessage<T>(tab.id, message);
+  }
+}
+
 async function downloadFile(file: ExportFile): Promise<void> {
   const blob = new Blob([file.content], { type: file.mimeType });
   const url = URL.createObjectURL(blob);
@@ -103,7 +133,7 @@ async function probe(): Promise<void> {
   }
 
   try {
-    const response = await sendMessage<{ ok: true; status: PageStatus }>(tab.id, {
+    const response = await sendMessageWithInjection<{ ok: true; status: PageStatus }>(tab, {
       type: "CHAT_EXPORTER_PROBE_PAGE",
     } satisfies ProbePageMessage);
     exportButton.disabled = !response.status.ok;
@@ -131,7 +161,7 @@ async function runExport(): Promise<void> {
       }
     }
 
-    const response = await sendMessage<ExportResponse>(tab.id, {
+    const response = await sendMessageWithInjection<ExportResponse>(tab, {
       type: "CHAT_EXPORTER_EXPORT_CURRENT",
     });
 
