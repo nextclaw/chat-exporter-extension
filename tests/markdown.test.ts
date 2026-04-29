@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildExportBundle } from "../src/shared/exportBundle";
 import { buildOutputBaseName } from "../src/shared/filename";
 import { convertHtmlToMarkdown, enrichMessage, renderConversationMarkdown } from "../src/shared/markdown";
-import { EXPORTER_VERSION, FORMAT_VERSION, SERVICE, type ConversationExport } from "../src/shared/types";
+import { EXPORTER_VERSION, FORMAT_VERSION, type ConversationExport } from "../src/shared/types";
 
 describe("markdown conversion", () => {
   it("keeps headings, lists, links, code blocks, and tables", () => {
@@ -42,7 +42,7 @@ describe("markdown conversion", () => {
 describe("conversation rendering", () => {
   it("builds compatible filenames and output files", () => {
     const conversation: ConversationExport = {
-      service: SERVICE,
+      service: "chatgpt",
       format_version: FORMAT_VERSION,
       exporter_version: EXPORTER_VERSION,
       conversation_id: "abc-123",
@@ -81,5 +81,33 @@ describe("conversation rendering", () => {
       "Fixture_Chat__abc-123.json",
       "Fixture_Chat__abc-123.md",
     ]);
+  });
+
+  it("renders service-specific assistant headings", () => {
+    const conversation: ConversationExport = {
+      service: "gemini",
+      format_version: FORMAT_VERSION,
+      exporter_version: EXPORTER_VERSION,
+      conversation_id: "gemini-123",
+      title: "Gemini Fixture",
+      title_source: "test",
+      url: "https://gemini.google.com/app/gemini-123",
+      exported_at: "2026-04-29T00:00:00+00:00",
+      message_count: 1,
+      scroll_debug: {},
+      messages: [
+        enrichMessage({
+          id: "assistant-0000",
+          role: "assistant",
+          clipboard_text: "",
+          clipboard_html: "",
+          dom_markdown: "Hello from Gemini",
+          dom_html: "<p>Hello from Gemini</p>",
+          dom_text: "Hello from Gemini",
+        }),
+      ],
+    };
+
+    expect(renderConversationMarkdown(conversation)).toContain("### Gemini");
   });
 });

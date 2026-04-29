@@ -1,13 +1,15 @@
 # chat-exporter-extension
 
-Chrome Manifest V3 插件，用于把当前 ChatGPT 对话导出为本地 JSON 和 Markdown 文件。
+Chrome Manifest V3 插件，用于把当前 ChatGPT / Gemini / Claude 对话导出为本地 JSON 和 Markdown 文件。
 
 ## v0.1 scope
 
-- 支持 `https://chatgpt.com/c/<conversation_id>` 当前对话页。
+- 支持当前对话页：
+  - `https://chatgpt.com/c/<conversation_id>`
+  - `https://gemini.google.com/app/<conversation_id>`
+  - `https://claude.ai/chat/<conversation_id>`
 - 导出 rich JSON v2 和 Markdown transcript。
 - 完全本地处理，不依赖 MCP，不调用远端服务，不采集分析数据。
-- Gemini / Claude 支持暂列 roadmap。
 
 ## Development
 

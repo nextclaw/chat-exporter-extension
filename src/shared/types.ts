@@ -1,9 +1,14 @@
-export const SERVICE = "chatgpt";
-export const SITE_LABEL = "ChatGPT";
 export const FORMAT_VERSION = 2;
 export const EXPORTER_VERSION = "extension-0.1.0";
 
+export type Service = "chatgpt" | "gemini" | "claude";
 export type Role = "user" | "assistant";
+
+export const SITE_LABELS: Record<Service, string> = {
+  chatgpt: "ChatGPT",
+  gemini: "Gemini",
+  claude: "Claude",
+};
 
 export interface FeatureFlags {
   has_code_block: boolean;
@@ -40,7 +45,7 @@ export interface ChatMessage {
 }
 
 export interface ConversationExport {
-  service: typeof SERVICE;
+  service: Service;
   format_version: typeof FORMAT_VERSION;
   exporter_version: typeof EXPORTER_VERSION;
   conversation_id: string;
@@ -68,6 +73,8 @@ export interface ExportBundle {
 export interface PageStatus {
   ok: boolean;
   url: string;
+  service?: Service;
+  siteLabel?: string;
   conversationId?: string;
   reason?: string;
 }

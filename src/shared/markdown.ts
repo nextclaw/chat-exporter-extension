@@ -1,10 +1,14 @@
 import type { CandidateScore, ChatMessage, ConversationExport, FeatureFlags } from "./types";
-import { SITE_LABEL } from "./types";
+import { SITE_LABELS } from "./types";
 
 const NOISE_PATTERNS = [
   /\bCopy\b/i,
   /\bRegenerate\b/i,
   /\bChatGPT said\b/i,
+  /\bGemini said\b/i,
+  /\bGemini 说\b/i,
+  /\bClaude said\b/i,
+  /\bHuman said\b/i,
   /\bThought for\b/i,
   /\bGood response\b/i,
   /\bBad response\b/i,
@@ -421,7 +425,8 @@ function jsonString(value: string): string {
 }
 
 export function renderConversationMarkdown(conversation: ConversationExport): string {
-  const title = conversation.title.trim() || `${SITE_LABEL} Conversation`;
+  const siteLabel = SITE_LABELS[conversation.service] ?? "Chat";
+  const title = conversation.title.trim() || `${siteLabel} Conversation`;
   const renderedMessages: Array<{ role: string; content: string }> = [];
   let previousSignature = "";
 
@@ -476,7 +481,7 @@ export function renderConversationMarkdown(conversation: ConversationExport): st
       currentTurnOpen = true;
       parts.push("---", "", `## Turn ${turnIndex}`, "");
     }
-    parts.push(`### ${SITE_LABEL}`, "", message.content, "");
+    parts.push(`### ${siteLabel}`, "", message.content, "");
   }
 
   return `${parts.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;

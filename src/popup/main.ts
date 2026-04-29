@@ -1,7 +1,7 @@
 import "./style.css";
 
 import type { ExportFile, ExportResponse, PageStatus, ProbePageMessage } from "../shared/types";
-import { parseChatGptConversationUrl } from "../shared/url";
+import { parseConversationUrl } from "../shared/url";
 
 function requireElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -35,7 +35,7 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
 
 function pageStatusLabel(status: PageStatus): string {
   if (status.ok) {
-    return `Ready: ${status.conversationId}`;
+    return `Ready: ${status.siteLabel ?? "Chat"} ${status.conversationId}`;
   }
   return status.reason ?? "Current page is not supported.";
 }
@@ -124,7 +124,7 @@ async function probe(): Promise<void> {
   }
 
   if (tab.url) {
-    const parsed = parseChatGptConversationUrl(tab.url);
+    const parsed = parseConversationUrl(tab.url);
     if (!parsed.ok) {
       exportButton.disabled = true;
       setPageStatus(parsed.reason);
@@ -140,7 +140,7 @@ async function probe(): Promise<void> {
     setPageStatus(pageStatusLabel(response.status));
   } catch {
     exportButton.disabled = true;
-    setPageStatus("Open a ChatGPT conversation page.");
+    setPageStatus("Open a supported conversation page.");
   }
 }
 
@@ -155,7 +155,7 @@ async function runExport(): Promise<void> {
     }
 
     if (tab.url) {
-      const parsed = parseChatGptConversationUrl(tab.url);
+      const parsed = parseConversationUrl(tab.url);
       if (!parsed.ok) {
         throw new Error(parsed.reason);
       }
@@ -169,7 +169,7 @@ async function runExport(): Promise<void> {
       throw new Error(response.error);
     }
 
-    const parsed = parseChatGptConversationUrl(response.bundle.conversation.url);
+    const parsed = parseConversationUrl(response.bundle.conversation.url);
     if (!parsed.ok) {
       throw new Error(parsed.reason);
     }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Chrome extension for exporting the current ChatGPT conversation to local JSON and Markdown files.",
+  "description": "Chrome extension for exporting the current ChatGPT, Gemini, or Claude conversation to local JSON and Markdown files.",
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
     "build": "npm run clean && vite build && vite build --config vite.content.config.ts && node scripts/validate-build.mjs",
