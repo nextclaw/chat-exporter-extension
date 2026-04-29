@@ -1,15 +1,34 @@
-# chat-exporter-extension
+# Chat Exporter
 
-Chrome Manifest V3 插件，用于把当前 ChatGPT / Gemini / Claude 对话导出为本地 JSON 和 Markdown 文件。
+Chat Exporter is a Chrome Manifest V3 extension that exports the current ChatGPT, Gemini, or Claude conversation to local JSON and Markdown files.
 
-## v0.1 scope
+The extension runs entirely in the browser. It does not use MCP, does not call a remote service, does not run remote code, and does not collect analytics.
 
-- 支持当前对话页：
-  - `https://chatgpt.com/c/<conversation_id>`
-  - `https://gemini.google.com/app/<conversation_id>`
-  - `https://claude.ai/chat/<conversation_id>`
-- 导出 rich JSON v2 和 Markdown transcript。
-- 完全本地处理，不依赖 MCP，不调用远端服务，不采集分析数据。
+中文文档: [README-cn.md](README-cn.md)
+
+## Supported Pages
+
+- ChatGPT: `https://chatgpt.com/c/<conversation_id>`
+- Gemini: `https://gemini.google.com/app/<conversation_id>`
+- Claude: `https://claude.ai/chat/<conversation_id>`
+- Claude legacy/app origin: `https://app.claude.ai/chat/<conversation_id>`
+
+Only the currently open conversation page is exported. The extension does not browse history lists or reload the conversation.
+
+## Output
+
+Each export saves two local files:
+
+- Rich JSON v2, compatible with the existing `chat_export` data model.
+- Markdown transcript with frontmatter and turn-based role headings.
+
+Message sources include DOM HTML, DOM text, DOM Markdown, feature flags, selected source, quality score, and candidate scores. Clipboard fields are intentionally empty because the extension does not read the clipboard or click provider copy buttons.
+
+## Privacy
+
+Chat Exporter reads the visible DOM of the active supported conversation page only after the user clicks Export. The extracted content is converted locally and saved through the Chrome Downloads API.
+
+No conversation content is sent to the developer, third parties, or remote servers. See [PRIVACY.md](PRIVACY.md).
 
 ## Development
 
@@ -21,4 +40,16 @@ npm run test
 npm run build
 ```
 
-构建产物位于 `dist/`。在 Chrome 扩展管理页面开启 Developer mode 后，选择 `dist/` 作为 unpacked extension。
+Build output is written to `dist/`. To test locally, open `chrome://extensions`, enable Developer mode, choose "Load unpacked", and select `dist/`.
+
+## Package For Chrome Web Store
+
+```bash
+npm run package
+```
+
+The uploadable ZIP is written to `release/`.
+
+GitHub Actions runs the same checks and uploads the generated ZIP as a workflow artifact on pushes, pull requests, and manual dispatches.
+
+Chrome Web Store publishing notes and prepared listing copy are in [STORE-LISTING.md](STORE-LISTING.md).
