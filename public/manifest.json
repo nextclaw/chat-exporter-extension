@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Exporter",
+  "version": "0.1.0",
+  "description": "Export the current ChatGPT conversation to local JSON and Markdown files.",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "downloads"],
+  "action": {
+    "default_title": "Export current chat",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["assets/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
