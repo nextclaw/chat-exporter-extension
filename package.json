@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "NextClaw <zizhizhan@gmail.com> (https://github.com/nextclaw)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nextclaw/chat-exporter-extension.git"
+  },
+  "homepage": "https://github.com/nextclaw/chat-exporter-extension#readme",
+  "bugs": {
+    "url": "https://github.com/nextclaw/chat-exporter-extension/issues"
+  },
   "description": "Chrome extension for exporting the current ChatGPT, Gemini, or Claude conversation to local JSON and Markdown files.",
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
