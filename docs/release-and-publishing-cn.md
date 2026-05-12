@@ -243,7 +243,7 @@ STORE-LISTING-cn.md
 
 - `activeTab`: 用户打开 popup 后识别并处理当前受支持的会话标签页
 - `scripting`: 当 Chrome 尚未注入 packaged content script 时，向当前受支持标签页注入扩展自带脚本
-- `downloads`: 保存生成的 JSON 和 Markdown 文件
+- `downloads`: 保存生成的 JSON、Markdown 和图片资产文件
 - content script matches: 仅限 ChatGPT、Gemini、Claude 页面，用于读取当前会话 DOM
 
 ### 5. 填 Distribution
@@ -268,7 +268,7 @@ STORE-LISTING-cn.md
    - https://claude.ai/chat/<conversation_id>
 2. Open the Chat Exporter extension popup.
 3. Click Export.
-4. Confirm that a JSON file and a Markdown file are downloaded locally.
+4. Confirm that JSON and Markdown files are downloaded locally, plus image asset files when the conversation contains images.
 
 No test account is provided. Reviewers can use any account that can access a supported conversation page.
 ```

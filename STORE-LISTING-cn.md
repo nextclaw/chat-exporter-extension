@@ -15,7 +15,7 @@ Chat Exporter
 短描述：
 
 ```text
-Export the current ChatGPT, Gemini, or Claude conversation to local JSON and Markdown files.
+Export the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and image files.
 ```
 
 详细描述：
@@ -23,7 +23,7 @@ Export the current ChatGPT, Gemini, or Claude conversation to local JSON and Mar
 ```text
 Chat Exporter saves the currently open ChatGPT, Gemini, or Claude conversation as local files.
 
-It creates both a rich JSON export and a readable Markdown transcript, making it useful for personal archiving, notes, and local knowledge workflows.
+It creates a rich JSON export, a readable Markdown transcript, and local image asset files when the conversation contains images.
 
 The extension is local-only: it does not call a remote service, does not use analytics, does not read the clipboard, and does not upload conversation content anywhere.
 
@@ -50,7 +50,7 @@ English
 单一用途：
 
 ```text
-Export the current supported AI chat conversation page to local JSON and Markdown files.
+Export the current supported AI chat conversation page to local JSON, Markdown, and image asset files.
 ```
 
 远程代码：
@@ -88,7 +88,7 @@ Used to inject the packaged content script into an already-open supported conver
 `downloads`：
 
 ```text
-Used to save the generated JSON and Markdown export files locally.
+Used to save the generated JSON, Markdown, and image asset files locally.
 ```
 
 Host permissions / content script matches：
@@ -106,7 +106,7 @@ Limited to ChatGPT, Gemini, and Claude conversation pages so the extension can r
    - https://claude.ai/chat/<conversation_id>
 2. Open the Chat Exporter extension popup.
 3. Click Export.
-4. Confirm that a JSON file and a Markdown file are downloaded locally.
+4. Confirm that JSON and Markdown files are downloaded locally, plus image asset files when the conversation contains images.
 
 No test account is provided. Reviewers can use any account that can access a supported conversation page.
 ```

@@ -1,4 +1,6 @@
+import { ImageAssetCollector } from "../shared/assets";
 import { buildExportBundle } from "../shared/exportBundle";
+import { buildOutputBaseName } from "../shared/filename";
 import { convertHtmlToMarkdown, enrichMessage } from "../shared/markdown";
 import {
   EXPORTER_VERSION,
@@ -19,6 +21,16 @@ interface RolePayload {
   dom_html: string;
   dom_markdown: string;
   dom_text: string;
+}
+
+interface ImageSource {
+  url: string;
+  alt: string;
+}
+
+interface PayloadRecord {
+  node: Element;
+  payload: RolePayload;
 }
 
 interface TitleCandidate {
@@ -60,6 +72,10 @@ function nodeText(node: Node): string {
     return "";
   }
   const element = node as Element;
+  if (element.tagName.toLowerCase() === "img") {
+    const alt = cleanText(element.getAttribute("alt"));
+    return alt ? `[Image: ${alt}]` : "[Image]";
+  }
   if (element.tagName.toLowerCase() === "br") {
     return "\n";
   }
@@ -87,17 +103,156 @@ function normalizeMath(root: ParentNode): void {
   });
 }
 
-function normalizeMedia(root: ParentNode): void {
-  root.querySelectorAll("img").forEach((img) => {
+async function normalizeMedia(root: ParentNode, assetCollector?: ImageAssetCollector): Promise<void> {
+  const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+  for (const img of images) {
     const alt = cleanText(img.getAttribute("alt"));
-    const src = img.getAttribute("src") ?? "";
-    const replacement = document.createElement(src ? "a" : "span");
-    if (src) {
-      replacement.setAttribute("href", src);
+    if (alt) {
+      img.setAttribute("alt", alt);
     }
-    replacement.textContent = alt ? `[Image: ${alt}]` : "[Image]";
-    img.replaceWith(replacement);
+    if (!assetCollector) {
+      continue;
+    }
+    const asset = await assetCollector.registerImage(img);
+    if (!asset) {
+      continue;
+    }
+    img.setAttribute("data-original-src", asset.original_url);
+    if (asset.status === "ready") {
+      img.setAttribute("src", asset.local_path);
+    }
+  }
+}
+
+function imageUrlFromElement(image: HTMLImageElement): string {
+  return image.currentSrc || image.getAttribute("src") || "";
+}
+
+function imageUrlLooksDownloadable(url: string): boolean {
+  return /^(?:https?:|blob:|data:image\/)/i.test(url);
+}
+
+function urlLooksLikeImage(url: string): boolean {
+  return (
+    imageUrlLooksDownloadable(url) &&
+    (/\/backend-api\/estuary\/content\b/i.test(url) || /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)(?:[?#]|$)/i.test(url) || /^data:image\//i.test(url))
+  );
+}
+
+function firstSrcsetUrl(srcset: string | null | undefined): string {
+  return cleanText(srcset).split(",")[0]?.trim().split(/\s+/)[0] ?? "";
+}
+
+function collectImageSources(root: ParentNode): ImageSource[] {
+  const sources = new Map<string, ImageSource>();
+  const remember = (url: string, alt: string) => {
+    const normalizedUrl = cleanText(url);
+    if (!normalizedUrl || !imageUrlLooksDownloadable(normalizedUrl)) {
+      return;
+    }
+    const normalizedAlt = cleanText(alt);
+    const existing = sources.get(normalizedUrl);
+    if (!existing || (!existing.alt && normalizedAlt)) {
+      sources.set(normalizedUrl, { url: normalizedUrl, alt: normalizedAlt });
+    }
+  };
+
+  root.querySelectorAll<HTMLImageElement>("img").forEach((image) => {
+    remember(imageUrlFromElement(image), image.getAttribute("alt") ?? image.getAttribute("aria-label") ?? "");
   });
+  root.querySelectorAll<HTMLSourceElement>("source[srcset]").forEach((source) => {
+    remember(firstSrcsetUrl(source.getAttribute("srcset")), source.getAttribute("aria-label") ?? "");
+  });
+  root.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((anchor) => {
+    const href = anchor.getAttribute("href") ?? "";
+    if (urlLooksLikeImage(href)) {
+      remember(href, anchor.getAttribute("aria-label") ?? anchor.getAttribute("title") ?? getElementText(anchor));
+    }
+  });
+
+  return [...sources.values()];
+}
+
+function hasDescendantClass(root: ParentNode, className: string): boolean {
+  const elements = root instanceof Element ? [root, ...Array.from(root.querySelectorAll("*"))] : Array.from(root.querySelectorAll("*"));
+  return elements.some((element) => element.classList.contains(className));
+}
+
+function isChatGptImageGenTurn(node: Element): boolean {
+  return (
+    hasDescendantClass(node, "group/imagegen-image") ||
+    Boolean(node.querySelector("[data-testid='image-gen-overlay-actions']")) ||
+    Boolean(node.querySelector("button[data-testid='good-image-turn-action-button']")) ||
+    Boolean(node.querySelector("img[src*='/backend-api/estuary/content']"))
+  );
+}
+
+function chatGptImageGenTurns(root: ParentNode): Element[] {
+  const candidates = Array.from(
+    root.querySelectorAll<Element>(
+      "[data-testid^='conversation-turn-'], .agent-turn, [class~='group/turn-messages']",
+    ),
+  ).filter(isChatGptImageGenTurn);
+  return candidates.filter((candidate) => !candidates.some((other) => other !== candidate && other.contains(candidate)));
+}
+
+async function payloadFromRoleElement(roleElement: Element, assetCollector?: ImageAssetCollector): Promise<RolePayload | undefined> {
+  const role = roleElement.getAttribute("data-message-author-role");
+  if (role !== "user" && role !== "assistant") {
+    return undefined;
+  }
+
+  const clone = pickSourceRoot(roleElement, role).cloneNode(true) as Element;
+  normalizeMath(clone);
+  await normalizeMedia(clone, assetCollector);
+  normalizeCodeBlocks(clone);
+  removeNoise(clone);
+  clone.querySelectorAll("a").forEach((anchor) => {
+    if (!getElementText(anchor) && anchor.getAttribute("href")) {
+      anchor.textContent = anchor.getAttribute("href");
+    }
+  });
+
+  const domHtml = cleanText(clone.innerHTML);
+  return {
+    role,
+    dom_html: domHtml,
+    dom_markdown: convertHtmlToMarkdown(domHtml),
+    dom_text: getElementText(clone),
+  };
+}
+
+async function payloadFromChatGptImageGenTurn(turn: Element, assetCollector?: ImageAssetCollector): Promise<RolePayload | undefined> {
+  const sources = collectImageSources(turn);
+  if (!sources.length) {
+    return undefined;
+  }
+
+  const wrapper = document.createElement("div");
+  const markdown: string[] = [];
+  const text: string[] = [];
+  for (const source of sources) {
+    const asset = await assetCollector?.registerImageUrl(source.url, source.alt);
+    const alt = source.alt || "generated image";
+    const imageUrl = asset?.status === "ready" ? asset.local_path : source.url;
+    const paragraph = document.createElement("p");
+    const image = document.createElement("img");
+    image.setAttribute("alt", alt);
+    image.setAttribute("src", imageUrl);
+    image.setAttribute("data-original-src", source.url);
+    paragraph.append(image);
+    wrapper.append(paragraph);
+    markdown.push(`![${alt}](${imageUrl})`);
+    text.push(`[Image: ${alt}]`);
+  }
+
+  const domHtml = cleanText(wrapper.innerHTML);
+  return {
+    role: "assistant",
+    dom_html: domHtml,
+    dom_markdown: markdown.join("\n\n"),
+    dom_text: text.join("\n"),
+  };
 }
 
 function extractLanguage(node: Element): string {
@@ -174,34 +329,25 @@ function pickSourceRoot(roleElement: Element, role: Role): Element {
   return roleElement;
 }
 
-export function extractRolePayloads(root: ParentNode = document): RolePayload[] {
-  return Array.from(root.querySelectorAll("[data-message-author-role]"))
-    .map((roleElement) => {
-      const role = roleElement.getAttribute("data-message-author-role");
-      if (role !== "user" && role !== "assistant") {
-        return undefined;
-      }
+export async function extractRolePayloads(root: ParentNode = document, assetCollector?: ImageAssetCollector): Promise<RolePayload[]> {
+  const records: PayloadRecord[] = [];
+  for (const roleElement of Array.from(root.querySelectorAll("[data-message-author-role]"))) {
+    const payload = await payloadFromRoleElement(roleElement, assetCollector);
+    if (payload) {
+      records.push({ node: roleElement, payload });
+    }
+  }
 
-      const clone = pickSourceRoot(roleElement, role).cloneNode(true) as Element;
-      normalizeMath(clone);
-      normalizeMedia(clone);
-      normalizeCodeBlocks(clone);
-      removeNoise(clone);
-      clone.querySelectorAll("a").forEach((anchor) => {
-        if (!getElementText(anchor) && anchor.getAttribute("href")) {
-          anchor.textContent = anchor.getAttribute("href");
-        }
-      });
+  for (const turn of chatGptImageGenTurns(root)) {
+    const payload = await payloadFromChatGptImageGenTurn(turn, assetCollector);
+    if (payload) {
+      records.push({ node: turn, payload });
+    }
+  }
 
-      const domHtml = cleanText(clone.innerHTML);
-      return {
-        role,
-        dom_html: domHtml,
-        dom_markdown: convertHtmlToMarkdown(domHtml),
-        dom_text: getElementText(clone),
-      };
-    })
-    .filter((payload): payload is RolePayload => Boolean(payload));
+  return records
+    .sort((left, right) => compareDocumentOrder(left.node, right.node))
+    .map((record) => record.payload);
 }
 
 function addRecord(records: Array<{ role: Role; node: Element; text: string }>, role: Role, node: Element | null): void {
@@ -278,6 +424,28 @@ function markdownFromGeminiUserNode(node: Element): string {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function imageMarkdownReferences(root: ParentNode): string[] {
+  return Array.from(root.querySelectorAll<HTMLImageElement>("img"))
+    .map((image) => {
+      const alt = cleanText(image.getAttribute("alt"));
+      const src = image.getAttribute("src") ?? "";
+      if (src) {
+        return alt ? `![${alt}](${src})` : `![](${src})`;
+      }
+      return alt ? `[Image: ${alt}]` : "[Image]";
+    })
+    .filter(Boolean);
+}
+
+function appendImageMarkdown(markdown: string, root: ParentNode): string {
+  const images = imageMarkdownReferences(root);
+  if (!images.length) {
+    return markdown;
+  }
+  const imageBlock = images.join("\n\n");
+  return markdown ? `${markdown}\n\n${imageBlock}` : imageBlock;
+}
+
 function removeGeminiNoise(root: ParentNode): void {
   removeNoise(root);
   root.querySelectorAll("mat-icon, [aria-hidden='true'], .cdk-visually-hidden, .screen-reader-user-query-label").forEach((node) => node.remove());
@@ -295,7 +463,7 @@ function removeGeminiNoise(root: ParentNode): void {
   });
 }
 
-export function extractGeminiRolePayloads(root: ParentNode = document): RolePayload[] {
+export async function extractGeminiRolePayloads(root: ParentNode = document, assetCollector?: ImageAssetCollector): Promise<RolePayload[]> {
   const records: Array<{ role: Role; node: Element; text: string }> = [];
   const userSelectors = ["user-query", "[data-test-id*='user-query' i]", "[data-testid*='user-query' i]", ".user-query", ".query-text"];
   const assistantSelectors = ["model-response", "message-content", ".model-response-text", ".response-content", ".model-response"];
@@ -310,23 +478,26 @@ export function extractGeminiRolePayloads(root: ParentNode = document): RolePayl
     });
   });
 
-  return compactRecords(records).map((record) => {
+  const payloads: RolePayload[] = [];
+  for (const record of compactRecords(records)) {
     const sourceNode = record.role === "user" ? record.node.querySelector(".query-text") ?? record.node : record.node;
     const clone = sourceNode.cloneNode(true) as Element;
-    normalizeMedia(clone);
+    await normalizeMedia(clone, assetCollector);
     normalizeCodeBlocks(clone);
     removeGeminiNoise(clone);
-    const domMarkdown = record.role === "user" ? markdownFromGeminiUserNode(record.node) : convertHtmlToMarkdown(cleanText(clone.innerHTML || clone.outerHTML));
+    const domMarkdown =
+      record.role === "user"
+        ? appendImageMarkdown(markdownFromGeminiUserNode(record.node), clone)
+        : convertHtmlToMarkdown(cleanText(clone.innerHTML || clone.outerHTML));
     const domHtml = cleanText(clone.innerHTML || clone.outerHTML);
-    return {
+    payloads.push({
       role: record.role,
-      clipboard_text: "",
-      clipboard_html: "",
       dom_markdown: domMarkdown,
       dom_html: domHtml,
       dom_text: record.role === "user" ? domMarkdown : getElementText(clone),
-    };
-  });
+    });
+  }
+  return payloads;
 }
 
 function normalizeClaudeSpecialBlocks(root: ParentNode): void {
@@ -354,7 +525,7 @@ function removeClaudeNoise(root: ParentNode): void {
   });
 }
 
-export function extractClaudeRolePayloads(root: ParentNode = document): RolePayload[] {
+export async function extractClaudeRolePayloads(root: ParentNode = document, assetCollector?: ImageAssetCollector): Promise<RolePayload[]> {
   const records: Array<{ role: Role; node: Element; text: string }> = [];
   const userSelector = [
     "[data-testid='user-message']",
@@ -380,32 +551,32 @@ export function extractClaudeRolePayloads(root: ParentNode = document): RolePayl
     addRecord(records, "assistant", node);
   });
 
-  return compactRecords(records).map((record) => {
+  const payloads: RolePayload[] = [];
+  for (const record of compactRecords(records)) {
     const clone = record.node.cloneNode(true) as Element;
     normalizeClaudeSpecialBlocks(clone);
-    normalizeMedia(clone);
+    await normalizeMedia(clone, assetCollector);
     normalizeCodeBlocks(clone);
     removeClaudeNoise(clone);
     const domHtml = cleanText(clone.innerHTML || clone.outerHTML);
-    return {
+    payloads.push({
       role: record.role,
-      clipboard_text: "",
-      clipboard_html: "",
       dom_markdown: convertHtmlToMarkdown(domHtml),
       dom_html: domHtml,
       dom_text: getElementText(clone),
-    };
-  });
+    });
+  }
+  return payloads;
 }
 
-function extractPayloadsForService(service: Service): RolePayload[] {
+async function extractPayloadsForService(service: Service, assetCollector: ImageAssetCollector): Promise<RolePayload[]> {
   if (service === "gemini") {
-    return extractGeminiRolePayloads();
+    return extractGeminiRolePayloads(document, assetCollector);
   }
   if (service === "claude") {
-    return extractClaudeRolePayloads();
+    return extractClaudeRolePayloads(document, assetCollector);
   }
-  return extractRolePayloads();
+  return extractRolePayloads(document, assetCollector);
 }
 
 function usableTitle(value: string | undefined): string {
@@ -603,8 +774,13 @@ function buildMessage(payload: RolePayload, index: number): ChatMessage {
   return enrichMessage(message);
 }
 
-function buildConversation(parsed: ParsedConversationUrl, messages: ChatMessage[], scrollDebug: ScrollDebug): ConversationExport {
-  const selectedTitle = selectTitle(titleCandidates(parsed.url, parsed.service), parsed.service);
+function buildConversation(
+  parsed: ParsedConversationUrl,
+  selectedTitle: { title: string; source: string },
+  messages: ChatMessage[],
+  scrollDebug: ScrollDebug,
+  assets: ConversationExport["assets"],
+): ConversationExport {
   return {
     service: parsed.service,
     format_version: FORMAT_VERSION,
@@ -616,6 +792,7 @@ function buildConversation(parsed: ParsedConversationUrl, messages: ChatMessage[
     exported_at: utcTimestamp(),
     message_count: messages.length,
     scroll_debug: { ...scrollDebug },
+    assets,
     messages,
   };
 }
@@ -637,7 +814,14 @@ export async function exportCurrentConversation(): Promise<{ status: PageStatus;
     conversationId: parsed.conversationId,
   };
   const scrollDebug = await scrollConversationToTop(parsed.service);
-  const payloads = extractPayloadsForService(parsed.service);
+  const selectedTitle = selectTitle(titleCandidates(parsed.url, parsed.service), parsed.service);
+  const baseName = buildOutputBaseName({
+    service: parsed.service,
+    title: selectedTitle.title,
+    conversation_id: parsed.conversationId,
+  });
+  const assetCollector = new ImageAssetCollector(baseName);
+  const payloads = await extractPayloadsForService(parsed.service, assetCollector);
   const messages = payloads.map(buildMessage).filter((message) => message.final_markdown.trim());
   if (!messages.length) {
     return {
@@ -646,7 +830,7 @@ export async function exportCurrentConversation(): Promise<{ status: PageStatus;
     };
   }
 
-  const conversation = buildConversation(parsed, messages, scrollDebug);
+  const conversation = buildConversation(parsed, selectedTitle, messages, scrollDebug, assetCollector.listAssets());
 
   return {
     status,

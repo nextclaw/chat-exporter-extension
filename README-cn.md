@@ -1,6 +1,6 @@
 # Chat Exporter
 
-Chat Exporter 是一个 Chrome Manifest V3 插件，用于把当前 ChatGPT、Gemini 或 Claude 对话导出为本地 JSON 和 Markdown 文件。
+Chat Exporter 是一个 Chrome Manifest V3 插件，用于把当前 ChatGPT、Gemini 或 Claude 对话导出为本地 JSON、Markdown 和图片资产文件。
 
 插件完全在浏览器本地运行，不依赖 MCP，不调用远端服务，不执行远程代码，也不采集分析数据。
 
@@ -17,12 +17,15 @@ English documentation: [README.md](README.md)
 
 ## 输出
 
-每次导出会保存两个本地文件：
+每次导出会使用带服务名前缀、且保留 Unicode 标题的安全基础文件名，例如 `chatgpt__如何正确使用Codex__id`、`gemini__Gemini_图片测试__id` 或 `claude__Research_Notes__id`，并保存这些本地文件：
 
 - rich JSON v2，兼容现有 `chat_export` 数据模型。
 - Markdown transcript，包含 frontmatter 和按 turn 分组的角色标题。
+- 如对话中包含图片，会保存到匹配的 `<baseName>_assets/` 下载子目录。
 
-消息来源包括 DOM HTML、DOM text、DOM Markdown、feature flags、selected source、quality score 和 candidate scores。剪贴板字段会保留为空，因为插件不会读取剪贴板，也不会点击网页里的复制按钮。
+消息来源包括 DOM HTML、DOM text、DOM Markdown、feature flags、selected source、quality score、candidate scores，以及包含原始图片 URL 和本地路径的 asset manifest。剪贴板字段会保留为空，因为插件不会读取剪贴板，也不会点击网页里的复制按钮。
+
+当对话中包含较多图片时，popup 会显示下载进度。所有下载请求都被 Chrome 接受后，popup 会自动关闭，避免误点造成重复导出。如果有图片下载失败，popup 会停留并显示明确的 "Export again" 重试入口。
 
 ## 隐私
 

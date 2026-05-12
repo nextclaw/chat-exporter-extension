@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Chat Exporter",
-  "version": "0.1.0",
-  "description": "Export the current ChatGPT, Gemini, or Claude conversation to local JSON and Markdown files.",
+  "version": "0.1.1",
+  "description": "Export the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and image files.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "downloads", "scripting"],
   "action": {

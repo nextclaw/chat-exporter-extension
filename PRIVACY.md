@@ -2,7 +2,7 @@
 
 Last updated: 2026-04-30
 
-Chat Exporter is a local-only Chrome extension for exporting the currently open ChatGPT, Gemini, or Claude conversation to JSON and Markdown files.
+Chat Exporter is a local-only Chrome extension for exporting the currently open ChatGPT, Gemini, or Claude conversation to JSON, Markdown, and image asset files.
 
 ## Single Purpose
 
@@ -10,7 +10,7 @@ The extension's single purpose is to export the current supported AI chat conver
 
 ## Data The Extension Handles
 
-When the user clicks Export on a supported conversation page, the extension reads the page DOM for that current tab. This may include the conversation text and rendered message HTML visible in the browser.
+When the user clicks Export on a supported conversation page, the extension reads the page DOM for that current tab. This may include the conversation text, rendered message HTML, image URLs, and rendered image references visible in the browser.
 
 The extension does not collect browsing history, account credentials, cookies, payment information, personal profile information, or analytics data.
 
@@ -19,7 +19,8 @@ The extension does not collect browsing history, account credentials, cookies, p
 Conversation content is processed locally in the browser to create:
 
 - a rich JSON export, and
-- a Markdown transcript.
+- a Markdown transcript, and
+- image asset files when the conversation contains downloadable images.
 
 The generated files are saved locally using the Chrome Downloads API.
 
@@ -35,7 +36,7 @@ The extension does not load or execute remotely hosted code. All runtime code is
 
 - `activeTab`: lets the extension identify and work with the active tab after the user opens the popup.
 - `scripting`: lets the extension inject its packaged content script into an already-open supported conversation tab when Chrome has not injected it yet.
-- `downloads`: saves the generated JSON and Markdown files locally.
+- `downloads`: saves the generated JSON, Markdown, and image asset files locally.
 
 Host access is limited to supported conversation providers: ChatGPT, Gemini, and Claude.
 

@@ -1,6 +1,6 @@
 # Chat Exporter
 
-Chat Exporter is a Chrome Manifest V3 extension that exports the current ChatGPT, Gemini, or Claude conversation to local JSON and Markdown files.
+Chat Exporter is a Chrome Manifest V3 extension that exports the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and image asset files.
 
 The extension runs entirely in the browser. It does not use MCP, does not call a remote service, does not run remote code, and does not collect analytics.
 
@@ -17,12 +17,15 @@ Only the currently open conversation page is exported. The extension does not br
 
 ## Output
 
-Each export saves two local files:
+Each export saves local files with a service-prefixed, Unicode-safe base name such as `chatgpt__如何阅读一本书__id`, `gemini__Gemini_图片测试__id`, or `claude__Research_Notes__id`:
 
 - Rich JSON v2, compatible with the existing `chat_export` data model.
 - Markdown transcript with frontmatter and turn-based role headings.
+- Image assets, when present, under the matching `<baseName>_assets/` download subdirectory.
 
-Message sources include DOM HTML, DOM text, DOM Markdown, feature flags, selected source, quality score, and candidate scores. Clipboard fields are intentionally empty because the extension does not read the clipboard or click provider copy buttons.
+Message sources include DOM HTML, DOM text, DOM Markdown, feature flags, selected source, quality score, candidate scores, and an asset manifest with original image URLs and local paths. Clipboard fields are intentionally empty because the extension does not read the clipboard or click provider copy buttons.
+
+When a conversation contains many images, the popup shows download progress. If all downloads are accepted by Chrome, the popup closes automatically to avoid accidental duplicate exports. If any image download fails, the popup stays open and offers an explicit "Export again" retry.
 
 ## Privacy
 

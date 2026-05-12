@@ -2,7 +2,7 @@
 
 最后更新：2026-04-30
 
-Chat Exporter 是一个本地运行的 Chrome 插件，用于把当前打开的 ChatGPT、Gemini 或 Claude 对话导出为 JSON 和 Markdown 文件。
+Chat Exporter 是一个本地运行的 Chrome 插件，用于把当前打开的 ChatGPT、Gemini 或 Claude 对话导出为 JSON、Markdown 和图片资产文件。
 
 ## 单一用途
 
@@ -10,7 +10,7 @@ Chat Exporter 是一个本地运行的 Chrome 插件，用于把当前打开的 
 
 ## 插件处理的数据
 
-当用户在受支持的对话页点击 Export 时，插件会读取当前标签页的页面 DOM。这可能包含浏览器中可见的对话文本和渲染后的消息 HTML。
+当用户在受支持的对话页点击 Export 时，插件会读取当前标签页的页面 DOM。这可能包含浏览器中可见的对话文本、渲染后的消息 HTML、图片 URL 和渲染后的图片引用。
 
 插件不会收集浏览历史、账号凭据、Cookie、支付信息、个人资料信息或分析数据。
 
@@ -19,7 +19,8 @@ Chat Exporter 是一个本地运行的 Chrome 插件，用于把当前打开的 
 对话内容只会在浏览器本地处理，用来生成：
 
 - rich JSON 导出文件；
-- Markdown transcript。
+- Markdown transcript；
+- 当对话中包含可下载图片时，生成图片资产文件。
 
 生成的文件会通过 Chrome Downloads API 保存到本地。
 
@@ -35,7 +36,7 @@ Chat Exporter 不会把对话内容传输给开发者、第三方、分析服务
 
 - `activeTab`：用户打开 popup 后，允许插件识别并处理当前活动标签页。
 - `scripting`：当 Chrome 尚未向已打开的受支持对话页注入内容脚本时，允许插件注入扩展包内的 content script。
-- `downloads`：用于把生成的 JSON 和 Markdown 文件保存到本地。
+- `downloads`：用于把生成的 JSON、Markdown 和图片资产文件保存到本地。
 
 Host 访问范围仅限受支持的对话服务：ChatGPT、Gemini 和 Claude。
 

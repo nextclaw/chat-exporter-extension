@@ -44,6 +44,22 @@ export interface ChatMessage {
   candidate_scores: Record<string, CandidateScore>;
 }
 
+export type ExportAssetKind = "image";
+export type ExportAssetStatus = "ready" | "unsupported";
+
+export interface ExportAsset {
+  id: string;
+  kind: ExportAssetKind;
+  original_url: string;
+  download_url: string;
+  local_path: string;
+  filename: string;
+  alt: string;
+  mime_type: string;
+  status: ExportAssetStatus;
+  failure_reason?: string;
+}
+
 export interface ConversationExport {
   service: Service;
   format_version: typeof FORMAT_VERSION;
@@ -55,18 +71,32 @@ export interface ConversationExport {
   exported_at: string;
   message_count: number;
   scroll_debug: Record<string, unknown>;
+  assets: ExportAsset[];
   messages: ChatMessage[];
 }
 
-export interface ExportFile {
+export interface TextExportFile {
+  kind: "text";
   filename: string;
   mimeType: string;
   content: string;
 }
 
+export interface AssetExportFile {
+  kind: "asset";
+  filename: string;
+  mimeType: string;
+  url: string;
+  assetId: string;
+  originalUrl: string;
+}
+
+export type ExportFile = TextExportFile | AssetExportFile;
+
 export interface ExportBundle {
   baseName: string;
   conversation: ConversationExport;
+  assets: ExportAsset[];
   files: ExportFile[];
 }
 
