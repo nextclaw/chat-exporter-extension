@@ -7,7 +7,7 @@ import {
   harvestChatGptPayloads,
   probeCurrentPage,
   probeCurrentPageSummary,
-} from "../src/content/chatgptExtractor";
+} from "../src/content/extractors";
 import { ImageAssetCollector } from "../src/shared/assets";
 import { enrichMessage } from "../src/shared/markdown";
 

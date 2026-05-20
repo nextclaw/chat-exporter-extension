@@ -1,4 +1,4 @@
-import { exportCurrentConversation, probeCurrentPage, probeCurrentPageSummary } from "./chatgptExtractor";
+import { exportCurrentConversation, probeCurrentPage, probeCurrentPageSummary } from "./extractors";
 import { ALL_EXPORT_FORMATS, DEFAULT_EXPORT_FORMATS, type ExportFormat, type ExportResponse, type PopupMessage } from "../shared/types";
 
 declare global {
