@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import {
   EXPORT_PORT_NAME,
   type DownloadSummary,
+  type ExportFormat,
   type PageStatus,
   type PortMessageFromBackground,
   type PortMessageFromPopup,
@@ -36,6 +37,12 @@ interface ChromeMock {
   scripting: {
     executeScript: Mock;
   };
+  storage: {
+    local: {
+      get: Mock;
+      set: Mock;
+    };
+  };
 }
 
 function popupMarkup(): string {
@@ -45,6 +52,11 @@ function popupMarkup(): string {
         <h1>Chat Exporter</h1>
         <p id="page-status">Checking current tab...</p>
       </header>
+      <fieldset class="format-picker" id="format-picker">
+        <legend>Output</legend>
+        <label><input type="checkbox" name="format" value="markdown" /> Markdown (.md)</label>
+        <label><input type="checkbox" name="format" value="json" /> JSON (.json)</label>
+      </fieldset>
       <button id="export-button" type="button">Export</button>
       <p id="result-status" role="status" aria-live="polite"></p>
     </main>
@@ -68,8 +80,14 @@ function createMockPort(name: string): MockPort {
   return port;
 }
 
-function createChromeMock(): { chromeMock: ChromeMock; port: MockPort } {
+function createChromeMock(options: { storedFormats?: ExportFormat[] } = {}): {
+  chromeMock: ChromeMock;
+  port: MockPort;
+  storageState: Record<string, unknown>;
+} {
   const port = createMockPort(EXPORT_PORT_NAME);
+  const storageState: Record<string, unknown> =
+    options.storedFormats !== undefined ? { exportFormats: options.storedFormats } : {};
   const chromeMock: ChromeMock = {
     runtime: {
       connect: vi.fn(() => port),
@@ -83,9 +101,19 @@ function createChromeMock(): { chromeMock: ChromeMock; port: MockPort } {
     scripting: {
       executeScript: vi.fn(async () => undefined),
     },
+    storage: {
+      local: {
+        get: vi.fn(async (key: string) =>
+          key in storageState ? { [key]: storageState[key] } : {},
+        ),
+        set: vi.fn(async (entries: Record<string, unknown>) => {
+          Object.assign(storageState, entries);
+        }),
+      },
+    },
   };
   vi.stubGlobal("chrome", chromeMock);
-  return { chromeMock, port };
+  return { chromeMock, port, storageState };
 }
 
 async function loadPopup(): Promise<void> {
@@ -99,11 +127,28 @@ async function flushPromises(): Promise<void> {
   }
 }
 
-function elements(): { button: HTMLButtonElement; result: HTMLParagraphElement } {
+function elements(): {
+  button: HTMLButtonElement;
+  result: HTMLParagraphElement;
+  status: HTMLParagraphElement;
+  formats: HTMLInputElement[];
+} {
   return {
     button: document.querySelector<HTMLButtonElement>("#export-button")!,
     result: document.querySelector<HTMLParagraphElement>("#result-status")!,
+    status: document.querySelector<HTMLParagraphElement>("#page-status")!,
+    formats: Array.from(document.querySelectorAll<HTMLInputElement>("#format-picker input[name='format']")),
   };
+}
+
+function checkedFormats(): ExportFormat[] {
+  return elements().formats.filter((input) => input.checked).map((input) => input.value as ExportFormat);
+}
+
+function toggleFormat(value: ExportFormat, checked: boolean): void {
+  const input = elements().formats.find((entry) => entry.value === value)!;
+  input.checked = checked;
+  input.dispatchEvent(new Event("change"));
 }
 
 function emit(port: MockPort, message: PortMessageFromBackground): void {
@@ -143,7 +188,11 @@ describe("popup export port client", () => {
     await flushPromises();
 
     expect(chromeMock.runtime.connect).toHaveBeenCalledWith({ name: EXPORT_PORT_NAME });
-    expect(port.postMessage).toHaveBeenCalledWith({ type: "START_EXPORT", tabId: 1 });
+    expect(port.postMessage).toHaveBeenCalledWith({
+      type: "START_EXPORT",
+      tabId: 1,
+      formats: ["markdown"],
+    });
     expect(button.textContent).toBe("Exporting...");
     expect(button.disabled).toBe(true);
 
@@ -214,5 +263,70 @@ describe("popup export port client", () => {
     expect(button.disabled).toBe(false);
     expect(result.dataset.tone).toBe("error");
     expect(result.textContent).toBe("Background worker disconnected before the export finished.");
+  });
+});
+
+describe("popup format picker", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    document.body.innerHTML = popupMarkup();
+    vi.spyOn(window, "close").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("starts with only Markdown checked when storage has no preference", async () => {
+    createChromeMock();
+    await loadPopup();
+    expect(checkedFormats()).toEqual(["markdown"]);
+  });
+
+  it("restores the stored selection on startup", async () => {
+    createChromeMock({ storedFormats: ["json"] });
+    await loadPopup();
+    expect(checkedFormats()).toEqual(["json"]);
+  });
+
+  it("persists the selection when the user toggles JSON on", async () => {
+    const { storageState } = createChromeMock();
+    await loadPopup();
+
+    toggleFormat("json", true);
+    await flushPromises();
+
+    expect(checkedFormats()).toEqual(["markdown", "json"]);
+    expect(storageState.exportFormats).toEqual(["markdown", "json"]);
+  });
+
+  it("disables the export button and shows a hint when no format is checked", async () => {
+    createChromeMock();
+    await loadPopup();
+
+    toggleFormat("markdown", false);
+    await flushPromises();
+
+    const { button, status } = elements();
+    expect(button.disabled).toBe(true);
+    expect(status.textContent).toBe("Pick at least one output format.");
+  });
+
+  it("forwards the current selection on START_EXPORT", async () => {
+    const { port } = createChromeMock({ storedFormats: ["markdown", "json"] });
+    await loadPopup();
+
+    elements().button.click();
+    await flushPromises();
+
+    expect(port.postMessage).toHaveBeenCalledWith({
+      type: "START_EXPORT",
+      tabId: 1,
+      formats: ["markdown", "json"],
+    });
   });
 });

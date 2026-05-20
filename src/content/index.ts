@@ -1,5 +1,5 @@
 import { exportCurrentConversation, probeCurrentPage } from "./chatgptExtractor";
-import type { ExportResponse, PopupMessage } from "../shared/types";
+import { ALL_EXPORT_FORMATS, DEFAULT_EXPORT_FORMATS, type ExportFormat, type ExportResponse, type PopupMessage } from "../shared/types";
 
 declare global {
   interface Window {
@@ -30,7 +30,12 @@ if (!window.__chatExporterContentReady) {
       return false;
     }
 
-    exportCurrentConversation()
+    const requested = Array.isArray(message.formats)
+      ? message.formats.filter((value): value is ExportFormat => ALL_EXPORT_FORMATS.includes(value))
+      : [];
+    const formats = requested.length ? requested : [...DEFAULT_EXPORT_FORMATS];
+
+    exportCurrentConversation(formats)
       .then((result) => {
         if (result.bundle) {
           sendResponse({

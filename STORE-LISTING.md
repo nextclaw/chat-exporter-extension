@@ -23,7 +23,7 @@ Detailed description:
 ```text
 Chat Exporter saves the currently open ChatGPT, Gemini, or Claude conversation as local files.
 
-It creates a rich JSON export, a readable Markdown transcript, and local asset files when the conversation contains images or static download links.
+It creates a readable Markdown transcript by default, can additionally produce a rich JSON export for developers, and saves local asset files when the conversation contains images or static download links. The popup remembers your format choice.
 
 Long ChatGPT conversations are harvested turn by turn so virtualized web pages do not drop older messages.
 
@@ -93,6 +93,12 @@ Used to inject the packaged content script into an already-open supported conver
 Used to save the generated JSON, Markdown, and asset files locally.
 ```
 
+`storage`:
+
+```text
+Used to remember the user's last output-format selection (Markdown and/or JSON checkboxes in the popup) so it does not have to be re-checked on every export. Stored locally via chrome.storage.local. No conversation content, identifiers, or analytics are ever written.
+```
+
 Host permissions / content script matches:
 
 ```text
@@ -112,9 +118,11 @@ The extension registers a Manifest V3 background service worker (assets/backgrou
    - https://chatgpt.com/c/<conversation_id>
    - https://gemini.google.com/app/<conversation_id>
    - https://claude.ai/chat/<conversation_id>
-2. Open the Chat Exporter extension popup.
-3. Click Export.
-4. Confirm that JSON and Markdown files are downloaded locally, plus asset files when the conversation contains images or static download links.
+2. Open the Chat Exporter extension popup. The Output section lists two checkboxes: Markdown (checked by default) and JSON.
+3. Optionally tick JSON if a JSON export is also wanted.
+4. Click Export.
+5. Confirm that the selected text files (Markdown and/or JSON) are downloaded locally, plus asset files when the conversation contains images or static download links.
+6. Close and reopen the popup to confirm the selection is remembered.
 
 No test account is provided. Reviewers can use any account that can access a supported conversation page.
 ```

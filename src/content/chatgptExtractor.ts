@@ -3,12 +3,14 @@ import { buildExportBundle } from "../shared/exportBundle";
 import { buildOutputBaseName } from "../shared/filename";
 import { convertHtmlToMarkdown, enrichMessage } from "../shared/markdown";
 import {
+  DEFAULT_EXPORT_FORMATS,
   EXPORTER_VERSION,
   FORMAT_VERSION,
   SITE_LABELS,
   type ChatMessage,
   type ConversationExport,
   type ExportBundle,
+  type ExportFormat,
   type PageStatus,
   type Role,
   type Service,
@@ -1090,7 +1092,9 @@ function buildConversation(
   };
 }
 
-export async function exportCurrentConversation(): Promise<{ status: PageStatus; bundle?: ExportBundle; error?: string }> {
+export async function exportCurrentConversation(
+  formats: readonly ExportFormat[] = DEFAULT_EXPORT_FORMATS,
+): Promise<{ status: PageStatus; bundle?: ExportBundle; error?: string }> {
   const parsed = parseConversationUrl(location.href);
   if (!parsed.ok) {
     return {
@@ -1135,6 +1139,6 @@ export async function exportCurrentConversation(): Promise<{ status: PageStatus;
 
   return {
     status,
-    bundle: buildExportBundle(conversation),
+    bundle: buildExportBundle(conversation, formats),
   };
 }

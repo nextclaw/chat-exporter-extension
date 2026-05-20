@@ -1,13 +1,16 @@
 import "./style.css";
 
 import {
+  DEFAULT_EXPORT_FORMATS,
   EXPORT_PORT_NAME,
   type DownloadSummary,
+  type ExportFormat,
   type PageStatus,
   type PortMessageFromBackground,
   type ProbePageMessage,
 } from "../shared/types";
 import { parseConversationUrl } from "../shared/url";
+import { loadSelectedFormats, saveSelectedFormats } from "./storage";
 
 function requireElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -20,11 +23,16 @@ function requireElement<T extends Element>(selector: string): T {
 const pageStatusEl = requireElement<HTMLParagraphElement>("#page-status");
 const resultStatusEl = requireElement<HTMLParagraphElement>("#result-status");
 const exportButton = requireElement<HTMLButtonElement>("#export-button");
+const formatCheckboxes = Array.from(
+  document.querySelectorAll<HTMLInputElement>("#format-picker input[name='format']"),
+);
 
 type PopupState = "idle" | "exporting" | "completed" | "partial-failed" | "failed";
 
 let popupState: PopupState = "idle";
 let activePort: chrome.runtime.Port | undefined;
+let selectedFormats: ExportFormat[] = [...DEFAULT_EXPORT_FORMATS];
+let pageReady = false;
 
 function setPageStatus(message: string): void {
   pageStatusEl.textContent = message;
@@ -42,6 +50,42 @@ function setExportButton(label: string, disabled: boolean): void {
 
 function exportButtonLabel(): string {
   return popupState === "partial-failed" ? "Export again" : "Export";
+}
+
+function renderFormatCheckboxes(): void {
+  const selected = new Set(selectedFormats);
+  for (const input of formatCheckboxes) {
+    input.checked = selected.has(input.value as ExportFormat);
+  }
+}
+
+function refreshExportButton(): void {
+  if (popupState === "exporting" || popupState === "completed") {
+    return;
+  }
+  if (!selectedFormats.length) {
+    setExportButton(exportButtonLabel(), true);
+    setPageStatus("Pick at least one output format.");
+    return;
+  }
+  setExportButton(exportButtonLabel(), !pageReady);
+}
+
+function onFormatChange(input: HTMLInputElement): void {
+  const value = input.value as ExportFormat;
+  const next = new Set(selectedFormats);
+  if (input.checked) {
+    next.add(value);
+  } else {
+    next.delete(value);
+  }
+  selectedFormats = [...next];
+  void saveSelectedFormats(selectedFormats);
+  if (!selectedFormats.length) {
+    refreshExportButton();
+  } else {
+    void probe();
+  }
 }
 
 function schedulePopupClose(): void {
@@ -116,16 +160,18 @@ async function probe(): Promise<void> {
 
   const tab = await activeTab();
   if (!tab?.id) {
-    setExportButton(exportButtonLabel(), true);
+    pageReady = false;
     setPageStatus("No active tab.");
+    refreshExportButton();
     return;
   }
 
   if (tab.url) {
     const parsed = parseConversationUrl(tab.url);
     if (!parsed.ok) {
-      setExportButton(exportButtonLabel(), true);
+      pageReady = false;
       setPageStatus(parsed.reason);
+      refreshExportButton();
       return;
     }
   }
@@ -134,16 +180,17 @@ async function probe(): Promise<void> {
     const response = await sendMessageWithInjection<{ ok: true; status: PageStatus }>(tab, {
       type: "CHAT_EXPORTER_PROBE_PAGE",
     } satisfies ProbePageMessage);
-    setExportButton(exportButtonLabel(), !response.status.ok);
+    pageReady = response.status.ok;
     setPageStatus(pageStatusLabel(response.status));
   } catch (error) {
-    setExportButton(exportButtonLabel(), true);
+    pageReady = false;
     setPageStatus(
       error instanceof Error && error.message
         ? `Content script unavailable: ${error.message}. Reload the page and try again.`
         : "Content script unavailable. Reload the page and try again.",
     );
   }
+  refreshExportButton();
 }
 
 function summaryToResultMessage(summary: DownloadSummary): string {
@@ -183,6 +230,10 @@ async function runExport(): Promise<void> {
   if (popupState === "exporting" || popupState === "completed") {
     return;
   }
+  if (!selectedFormats.length) {
+    setResultStatus("Pick at least one output format.", "error");
+    return;
+  }
 
   const tab = await activeTab();
   if (!tab?.id) {
@@ -199,6 +250,7 @@ async function runExport(): Promise<void> {
   }
 
   const tabId = tab.id;
+  const formats = [...selectedFormats];
   popupState = "exporting";
   setExportButton("Exporting...", true);
   setResultStatus("Exporting...");
@@ -217,16 +269,24 @@ async function runExport(): Promise<void> {
       );
     }
   });
-  port.postMessage({ type: "START_EXPORT", tabId });
+  port.postMessage({ type: "START_EXPORT", tabId, formats });
 }
 
 exportButton.addEventListener("click", () => {
   void runExport();
 });
 
+for (const input of formatCheckboxes) {
+  input.addEventListener("change", () => onFormatChange(input));
+}
+
 window.addEventListener("unload", () => {
   activePort?.disconnect();
   activePort = undefined;
 });
 
-void probe();
+void (async () => {
+  selectedFormats = await loadSelectedFormats();
+  renderFormatCheckboxes();
+  await probe();
+})();

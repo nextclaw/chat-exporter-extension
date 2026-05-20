@@ -4,6 +4,10 @@ export const EXPORTER_VERSION = "extension-0.1.0";
 export type Service = "chatgpt" | "gemini" | "claude";
 export type Role = "user" | "assistant";
 
+export type ExportFormat = "markdown" | "json";
+export const ALL_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown", "json"] as const;
+export const DEFAULT_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown"] as const;
+
 export const SITE_LABELS: Record<Service, string> = {
   chatgpt: "ChatGPT",
   gemini: "Gemini",
@@ -126,6 +130,7 @@ export type ExportResponse = ExportSuccessResponse | ExportFailureResponse;
 
 export interface ExportCurrentMessage {
   type: "CHAT_EXPORTER_EXPORT_CURRENT";
+  formats: ExportFormat[];
 }
 
 export interface ProbePageMessage {
@@ -146,6 +151,7 @@ export interface DownloadSummary {
 export interface StartExportMessage {
   type: "START_EXPORT";
   tabId: number;
+  formats: ExportFormat[];
 }
 
 export interface ExportProgressMessage {

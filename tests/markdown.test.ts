@@ -77,10 +77,10 @@ describe("conversation rendering", () => {
 
     expect(buildOutputBaseName(conversation)).toBe("chatgpt__Fixture_Chat__abc-123");
     expect(renderConversationMarkdown(conversation)).toContain("### ChatGPT");
-    const bundle = buildExportBundle(conversation);
+    const bundle = buildExportBundle(conversation, ["markdown", "json"]);
     expect(bundle.files.map((file) => file.filename)).toEqual([
-      "chatgpt__Fixture_Chat__abc-123.json",
       "chatgpt__Fixture_Chat__abc-123.md",
+      "chatgpt__Fixture_Chat__abc-123.json",
     ]);
   });
 
@@ -155,11 +155,11 @@ describe("conversation rendering", () => {
       ],
     };
 
-    const bundle = buildExportBundle(conversation);
+    const bundle = buildExportBundle(conversation, ["markdown", "json"]);
     expect(bundle.assets).toHaveLength(1);
     expect(bundle.files.map((file) => file.filename)).toEqual([
-      "gemini__图片导出__gemini-asset.json",
       "gemini__图片导出__gemini-asset.md",
+      "gemini__图片导出__gemini-asset.json",
       "gemini__图片导出__gemini-asset_assets/001__流程图.png",
     ]);
     expect(bundle.files[2]).toMatchObject({
@@ -207,9 +207,9 @@ describe("conversation rendering", () => {
       ],
     };
 
-    expect(buildExportBundle(conversation).files.map((file) => file.filename)).toEqual([
-      "chatgpt__附件导出__attachment-asset.json",
+    expect(buildExportBundle(conversation, ["markdown", "json"]).files.map((file) => file.filename)).toEqual([
       "chatgpt__附件导出__attachment-asset.md",
+      "chatgpt__附件导出__attachment-asset.json",
       "chatgpt__附件导出__attachment-asset_assets/001__report.pdf",
     ]);
   });
