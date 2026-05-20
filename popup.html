@@ -12,6 +12,11 @@
         <h1>Chat Exporter</h1>
         <p id="page-status">Checking current tab...</p>
       </header>
+      <fieldset class="format-picker" id="format-picker">
+        <legend>Output</legend>
+        <label><input type="checkbox" name="format" value="markdown" /> Markdown (.md)</label>
+        <label><input type="checkbox" name="format" value="json" /> JSON (.json)</label>
+      </fieldset>
       <button id="export-button" type="button">Export</button>
       <p id="result-status" role="status" aria-live="polite"></p>
     </main>

@@ -54,6 +54,36 @@ p {
   color: #9f1d1d;
 }
 
+.format-picker {
+  border: 1px solid #d6dae1;
+  border-radius: 8px;
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px 10px;
+}
+
+.format-picker legend {
+  color: #5b6472;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0 4px;
+  text-transform: uppercase;
+}
+
+.format-picker label {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.format-picker input[type="checkbox"] {
+  margin: 0;
+}
+
 button {
   align-items: center;
   appearance: none;
@@ -81,6 +111,14 @@ button:disabled {
   :root {
     background: #181c22;
     color: #f7f8fb;
+  }
+
+  .format-picker {
+    border-color: #353b46;
+  }
+
+  .format-picker legend {
+    color: #b8c0cc;
   }
 
   #page-status,

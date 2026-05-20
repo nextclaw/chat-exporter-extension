@@ -1,11 +1,36 @@
 import { buildOutputBaseName } from "./filename";
 import { renderConversationMarkdown } from "./markdown";
-import type { AssetExportFile, ConversationExport, ExportBundle } from "./types";
+import {
+  DEFAULT_EXPORT_FORMATS,
+  type AssetExportFile,
+  type ConversationExport,
+  type ExportBundle,
+  type ExportFormat,
+  type TextExportFile,
+} from "./types";
 
-export function buildExportBundle(conversation: ConversationExport): ExportBundle {
+export function buildExportBundle(
+  conversation: ConversationExport,
+  formats: readonly ExportFormat[] = DEFAULT_EXPORT_FORMATS,
+): ExportBundle {
   const baseName = buildOutputBaseName(conversation);
-  const json = `${JSON.stringify(conversation, null, 2)}\n`;
-  const markdown = renderConversationMarkdown(conversation);
+  const textFiles: TextExportFile[] = [];
+  if (formats.includes("markdown")) {
+    textFiles.push({
+      kind: "text",
+      filename: `${baseName}.md`,
+      mimeType: "text/markdown;charset=utf-8",
+      content: renderConversationMarkdown(conversation),
+    });
+  }
+  if (formats.includes("json")) {
+    textFiles.push({
+      kind: "text",
+      filename: `${baseName}.json`,
+      mimeType: "application/json;charset=utf-8",
+      content: `${JSON.stringify(conversation, null, 2)}\n`,
+    });
+  }
   const assetFiles: AssetExportFile[] = conversation.assets
     .filter((asset) => asset.status === "ready" && asset.download_url)
     .map((asset) => ({
@@ -21,20 +46,6 @@ export function buildExportBundle(conversation: ConversationExport): ExportBundl
     baseName,
     conversation,
     assets: conversation.assets,
-    files: [
-      {
-        kind: "text",
-        filename: `${baseName}.json`,
-        mimeType: "application/json;charset=utf-8",
-        content: json,
-      },
-      {
-        kind: "text",
-        filename: `${baseName}.md`,
-        mimeType: "text/markdown;charset=utf-8",
-        content: markdown,
-      },
-      ...assetFiles,
-    ],
+    files: [...textFiles, ...assetFiles],
   };
 }

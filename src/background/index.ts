@@ -1,7 +1,9 @@
 import { textToDataUrl } from "../shared/encode";
 import {
+  ALL_EXPORT_FORMATS,
   EXPORT_PORT_NAME,
   type DownloadSummary,
+  type ExportFormat,
   type ExportResponse,
   type PortMessageFromBackground,
   type PortMessageFromPopup,
@@ -50,6 +52,14 @@ function errorMessage(error: unknown): string {
 }
 
 async function runExport(message: StartExportMessage, send: Sender): Promise<void> {
+  const formats = (Array.isArray(message.formats) ? message.formats : []).filter(
+    (value): value is ExportFormat => ALL_EXPORT_FORMATS.includes(value),
+  );
+  if (!formats.length) {
+    send({ type: "EXPORT_ERROR", message: "Pick at least one export format." });
+    return;
+  }
+
   const tab = await chrome.tabs.get(message.tabId);
   const parsed = parseConversationUrl(tab.url ?? "");
   if (!parsed.ok) {
@@ -57,7 +67,7 @@ async function runExport(message: StartExportMessage, send: Sender): Promise<voi
     return;
   }
 
-  const response = await fetchBundle(message.tabId);
+  const response = await fetchBundle(message.tabId, formats);
   if (!response.ok) {
     send({ type: "EXPORT_ERROR", message: response.error });
     return;
@@ -100,9 +110,10 @@ async function runExport(message: StartExportMessage, send: Sender): Promise<voi
   send({ type: "EXPORT_DONE", status: response.status, summary });
 }
 
-async function fetchBundle(tabId: number): Promise<ExportResponse> {
+async function fetchBundle(tabId: number, formats: ExportFormat[]): Promise<ExportResponse> {
+  const message = { type: "CHAT_EXPORTER_EXPORT_CURRENT" as const, formats };
   try {
-    return await sendTabMessage<ExportResponse>(tabId, { type: "CHAT_EXPORTER_EXPORT_CURRENT" });
+    return await sendTabMessage<ExportResponse>(tabId, message);
   } catch (error) {
     if (!isMissingContentScriptError(error)) {
       throw error;
@@ -113,7 +124,7 @@ async function fetchBundle(tabId: number): Promise<ExportResponse> {
       world: "ISOLATED",
       injectImmediately: false,
     });
-    return sendTabMessage<ExportResponse>(tabId, { type: "CHAT_EXPORTER_EXPORT_CURRENT" });
+    return sendTabMessage<ExportResponse>(tabId, message);
   }
 }
 
