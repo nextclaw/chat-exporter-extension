@@ -6,6 +6,7 @@ import {
   extractRolePayloads,
   harvestChatGptPayloads,
   probeCurrentPage,
+  probeCurrentPageSummary,
 } from "../src/content/chatgptExtractor";
 import { ImageAssetCollector } from "../src/shared/assets";
 import { enrichMessage } from "../src/shared/markdown";
@@ -35,6 +36,59 @@ describe("ChatGPT page probing", () => {
     });
   });
 
+});
+
+describe("probeCurrentPageSummary", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    document.title = "";
+    document.head.innerHTML = "";
+  });
+
+  it("populates title and messageCount on a ChatGPT conversation", () => {
+    setUrl("https://chatgpt.com/c/summary-fixture");
+    document.title = "How to read a book — ChatGPT";
+    document.body.innerHTML = `
+      <main>
+        <div data-testid="conversation-turn-1">
+          <article data-message-author-role="user">
+            <div class="whitespace-pre-wrap">First prompt</div>
+          </article>
+        </div>
+        <div data-testid="conversation-turn-2">
+          <article data-message-author-role="assistant">
+            <div class="markdown"><p>First answer</p></div>
+          </article>
+        </div>
+      </main>
+    `;
+
+    expect(probeCurrentPageSummary()).toMatchObject({
+      ok: true,
+      service: "chatgpt",
+      title: "How to read a book",
+      messageCount: 2,
+    });
+  });
+
+  it("falls back to base status when no usable title is found", () => {
+    setUrl("https://chatgpt.com/c/no-title-fixture");
+    document.title = "New chat";
+    document.body.innerHTML = "";
+
+    const summary = probeCurrentPageSummary();
+    expect(summary.ok).toBe(true);
+    expect(summary.title).toBeUndefined();
+    expect(summary.messageCount).toBe(0);
+  });
+
+  it("returns the base error status when the URL is not supported", () => {
+    setUrl("https://chatgpt.com/g/g-example");
+    expect(probeCurrentPageSummary()).toMatchObject({
+      ok: false,
+      reason: "Current page is not a ChatGPT conversation page.",
+    });
+  });
 });
 
 describe("extractRolePayloads", () => {

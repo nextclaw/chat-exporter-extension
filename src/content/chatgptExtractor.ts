@@ -1056,6 +1056,43 @@ export function probeCurrentPage(): PageStatus {
   return pageStatusFromUrl(location.href);
 }
 
+function summaryMessageCount(service: Service): number {
+  if (service === "chatgpt") {
+    const turns = document.querySelectorAll("[data-testid^='conversation-turn-']").length;
+    if (turns > 0) {
+      return turns;
+    }
+    return document.querySelectorAll("[data-message-author-role]").length;
+  }
+  if (service === "gemini") {
+    return document.querySelectorAll(
+      "user-query, model-response, [data-test-id*='user-query' i], [data-testid*='user-query' i]",
+    ).length;
+  }
+  const users = document.querySelectorAll(
+    "[data-testid='user-message'], [data-testid*='user-message' i]",
+  ).length;
+  const assistants = document.querySelectorAll(
+    ".font-claude-response, [data-testid*='assistant' i]",
+  ).length;
+  return users + assistants;
+}
+
+export function probeCurrentPageSummary(): PageStatus {
+  const base = probeCurrentPage();
+  if (!base.ok || !base.service) {
+    return base;
+  }
+  try {
+    const selectedTitle = selectTitle(titleCandidates(base.url, base.service), base.service);
+    const title = selectedTitle.source === "fallback" ? undefined : selectedTitle.title;
+    const messageCount = summaryMessageCount(base.service);
+    return { ...base, title, messageCount };
+  } catch {
+    return base;
+  }
+}
+
 function buildMessage(payload: RolePayload, index: number): ChatMessage {
   const message = {
     id: `${payload.role}-${String(index).padStart(4, "0")}`,

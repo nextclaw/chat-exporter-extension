@@ -111,6 +111,8 @@ export interface PageStatus {
   service?: Service;
   siteLabel?: string;
   conversationId?: string;
+  title?: string;
+  messageCount?: number;
   reason?: string;
 }
 

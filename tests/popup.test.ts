@@ -15,6 +15,8 @@ const READY_STATUS: PageStatus = {
   service: "chatgpt",
   siteLabel: "ChatGPT",
   conversationId: "popup-fixture",
+  title: "Popup Fixture Chat",
+  messageCount: 4,
 };
 
 interface MockPort {
@@ -160,6 +162,85 @@ function emit(port: MockPort, message: PortMessageFromBackground): void {
 function fullSummary(): DownloadSummary {
   return { textFiles: 2, assetFiles: 1, savedAssets: 1, failedAssets: 0 };
 }
+
+describe("popup page status rendering", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    document.body.innerHTML = popupMarkup();
+    vi.spyOn(window, "close").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("renders the conversation title and message count when probe returns them", async () => {
+    createChromeMock();
+    await loadPopup();
+    expect(elements().status.textContent).toBe("Ready: Popup Fixture Chat · 4 messages");
+  });
+
+  it("falls back to siteLabel + conversationId when probe omits the title", async () => {
+    const port = createMockPort(EXPORT_PORT_NAME);
+    vi.stubGlobal("chrome", {
+      runtime: { connect: vi.fn(() => port) },
+      tabs: {
+        query: vi.fn(async () => [{ id: 1, url: READY_STATUS.url }]),
+        sendMessage: vi.fn((_id: number, _msg: unknown, cb: (response: unknown) => void) => {
+          cb({
+            ok: true,
+            status: {
+              ok: true,
+              url: READY_STATUS.url,
+              service: "chatgpt",
+              siteLabel: "ChatGPT",
+              conversationId: "popup-fixture",
+            },
+          });
+        }),
+      },
+      scripting: { executeScript: vi.fn(async () => undefined) },
+      storage: {
+        local: {
+          get: vi.fn(async () => ({})),
+          set: vi.fn(async () => undefined),
+        },
+      },
+    });
+    await loadPopup();
+    expect(elements().status.textContent).toBe("Ready: ChatGPT popup-fixture");
+  });
+
+  it("truncates long titles to 60 characters with an ellipsis", async () => {
+    const port = createMockPort(EXPORT_PORT_NAME);
+    const longTitle = "A".repeat(120);
+    vi.stubGlobal("chrome", {
+      runtime: { connect: vi.fn(() => port) },
+      tabs: {
+        query: vi.fn(async () => [{ id: 1, url: READY_STATUS.url }]),
+        sendMessage: vi.fn((_id: number, _msg: unknown, cb: (response: unknown) => void) => {
+          cb({
+            ok: true,
+            status: { ...READY_STATUS, title: longTitle, messageCount: 8 },
+          });
+        }),
+      },
+      scripting: { executeScript: vi.fn(async () => undefined) },
+      storage: {
+        local: {
+          get: vi.fn(async () => ({})),
+          set: vi.fn(async () => undefined),
+        },
+      },
+    });
+    await loadPopup();
+    expect(elements().status.textContent).toBe(`Ready: ${"A".repeat(59)}… · 8 messages`);
+  });
+});
 
 describe("popup export port client", () => {
   let closeSpy: Mock;

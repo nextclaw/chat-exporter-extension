@@ -1,4 +1,4 @@
-import { exportCurrentConversation, probeCurrentPage } from "./chatgptExtractor";
+import { exportCurrentConversation, probeCurrentPage, probeCurrentPageSummary } from "./chatgptExtractor";
 import { ALL_EXPORT_FORMATS, DEFAULT_EXPORT_FORMATS, type ExportFormat, type ExportResponse, type PopupMessage } from "../shared/types";
 
 declare global {
@@ -21,7 +21,7 @@ if (!window.__chatExporterContentReady) {
 
   chrome.runtime.onMessage.addListener((message: PopupMessage, _sender, sendResponse) => {
     if (message.type === "CHAT_EXPORTER_PROBE_PAGE") {
-      sendResponse({ ok: true, status: probeCurrentPage() });
+      sendResponse({ ok: true, status: probeCurrentPageSummary() });
       return false;
     }
 

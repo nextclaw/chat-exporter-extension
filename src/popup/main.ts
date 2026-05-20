@@ -101,11 +101,19 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
   return tabs[0];
 }
 
+function truncateTitle(title: string, limit = 60): string {
+  return title.length > limit ? `${title.slice(0, limit - 1)}…` : title;
+}
+
 function pageStatusLabel(status: PageStatus): string {
-  if (status.ok) {
-    return `Ready: ${status.siteLabel ?? "Chat"} ${status.conversationId}`;
+  if (!status.ok) {
+    return status.reason ?? "Current page is not supported.";
   }
-  return status.reason ?? "Current page is not supported.";
+  const head = status.title ? truncateTitle(status.title) : `${status.siteLabel ?? "Chat"} ${status.conversationId}`;
+  const count = typeof status.messageCount === "number" && status.messageCount > 0
+    ? ` · ${status.messageCount} ${status.messageCount === 1 ? "message" : "messages"}`
+    : "";
+  return `Ready: ${head}${count}`;
 }
 
 async function sendMessage<T>(tabId: number, message: unknown): Promise<T> {
