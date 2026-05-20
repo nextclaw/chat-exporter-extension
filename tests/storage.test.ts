@@ -40,7 +40,7 @@ describe("popup/storage", () => {
   });
 
   it("falls back to the default when stored entries are all invalid", async () => {
-    withStorage({ exportFormats: ["pdf", "html"] });
+    withStorage({ exportFormats: ["pdf", "epub"] });
     await expect(loadSelectedFormats()).resolves.toEqual(["markdown"]);
   });
 

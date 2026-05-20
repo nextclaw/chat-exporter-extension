@@ -4,8 +4,8 @@ export const EXPORTER_VERSION = "extension-0.1.0";
 export type Service = "chatgpt" | "gemini" | "claude";
 export type Role = "user" | "assistant";
 
-export type ExportFormat = "markdown" | "json";
-export const ALL_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown", "json"] as const;
+export type ExportFormat = "markdown" | "json" | "html";
+export const ALL_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown", "json", "html"] as const;
 export const DEFAULT_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown"] as const;
 
 export const SITE_LABELS: Record<Service, string> = {

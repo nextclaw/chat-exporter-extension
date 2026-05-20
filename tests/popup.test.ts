@@ -57,6 +57,7 @@ function popupMarkup(): string {
       <fieldset class="format-picker" id="format-picker">
         <legend>Output</legend>
         <label><input type="checkbox" name="format" value="markdown" /> Markdown (.md)</label>
+        <label><input type="checkbox" name="format" value="html" /> HTML (.html)</label>
         <label><input type="checkbox" name="format" value="json" /> JSON (.json)</label>
       </fieldset>
       <button id="export-button" type="button">Export</button>
@@ -408,6 +409,26 @@ describe("popup format picker", () => {
       type: "START_EXPORT",
       tabId: 1,
       formats: ["markdown", "json"],
+    });
+  });
+
+  it("includes HTML in the START_EXPORT payload when the user ticks it", async () => {
+    const { port, storageState } = createChromeMock();
+    await loadPopup();
+
+    toggleFormat("html", true);
+    await flushPromises();
+
+    expect(checkedFormats()).toEqual(["markdown", "html"]);
+    expect(storageState.exportFormats).toEqual(["markdown", "html"]);
+
+    elements().button.click();
+    await flushPromises();
+
+    expect(port.postMessage).toHaveBeenCalledWith({
+      type: "START_EXPORT",
+      tabId: 1,
+      formats: ["markdown", "html"],
     });
   });
 });
