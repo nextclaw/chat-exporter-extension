@@ -5,12 +5,15 @@ import {
   EXPORT_PORT_NAME,
   type DownloadSummary,
   type ExportFormat,
+  type LastExportStatus,
   type PageStatus,
   type PortMessageFromBackground,
   type ProbePageMessage,
 } from "../shared/types";
 import { parseConversationUrl } from "../shared/url";
-import { loadSelectedFormats, saveSelectedFormats } from "./storage";
+import { loadSelectedFormats, saveSelectedFormats } from "../shared/storage";
+
+const LAST_STATUS_KEY = "lastExportStatus";
 
 function requireElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -293,8 +296,27 @@ window.addEventListener("unload", () => {
   activePort = undefined;
 });
 
+async function consumeLastExportStatus(): Promise<void> {
+  if (!chrome?.storage?.session) {
+    return;
+  }
+  try {
+    const stored = await chrome.storage.session.get(LAST_STATUS_KEY);
+    const last = stored[LAST_STATUS_KEY] as LastExportStatus | undefined;
+    if (!last || typeof last !== "object" || typeof last.message !== "string") {
+      return;
+    }
+    await chrome.storage.session.remove(LAST_STATUS_KEY);
+    const triggerLabel = last.trigger === "shortcut" ? "shortcut" : "context menu";
+    setResultStatus(`Last ${triggerLabel} export: ${last.message}`, last.ok ? "success" : "error");
+  } catch {
+    // Session storage may be unavailable in some Chrome contexts; skip silently.
+  }
+}
+
 void (async () => {
   selectedFormats = await loadSelectedFormats();
   renderFormatCheckboxes();
+  await consumeLastExportStatus();
   await probe();
 })();

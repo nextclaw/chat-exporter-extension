@@ -175,3 +175,13 @@ export interface ExportErrorMessage {
 
 export type PortMessageFromPopup = StartExportMessage;
 export type PortMessageFromBackground = ExportProgressMessage | ExportDoneMessage | ExportErrorMessage;
+
+export type LastExportTrigger = "shortcut" | "context-menu";
+
+export interface LastExportStatus {
+  trigger: LastExportTrigger;
+  ok: boolean;
+  message: string;
+  summary?: DownloadSummary;
+  at: string;
+}
