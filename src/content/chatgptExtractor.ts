@@ -404,14 +404,23 @@ function normalizeCodeBlocks(root: ParentNode): void {
 }
 
 function removeNoise(root: ParentNode): void {
-  root.querySelectorAll("button, script, style, noscript, textarea, svg").forEach((node) => node.remove());
+  root.querySelectorAll("script, style, noscript, textarea, svg").forEach((node) => node.remove());
+  root.querySelectorAll("button").forEach((node) => {
+    if (!node.querySelector("pre, code")) {
+      node.remove();
+    }
+  });
   root.querySelectorAll(".sr-only").forEach((node) => {
     if (/^(ChatGPT said|Gemini said|Gemini 说|Claude said|Human said|You said)/i.test(getElementText(node))) {
       node.remove();
     }
   });
-  root.querySelectorAll("*").forEach((node) => {
-    if (!node.children.length && NOISE_TEXT_PATTERN.test(getElementText(node))) {
+  root.querySelectorAll<Element>("*").forEach((node) => {
+    if (node.childElementCount) {
+      return;
+    }
+    const text = (node.textContent ?? "").trim();
+    if (text && NOISE_TEXT_PATTERN.test(text)) {
       node.remove();
     }
   });
@@ -888,9 +897,9 @@ export async function harvestChatGptPayloads(
   let firstSeenSequence = 0;
   let dedupedMessages = 0;
 
-  const sample = async (): Promise<void> => {
+  const sample = async (root: ParentNode = document): Promise<void> => {
     harvestPositions.push(Math.round(scrollTopOf(container)));
-    const records = await extractRolePayloadRecords(document, assetCollector);
+    const records = await extractRolePayloadRecords(root, assetCollector);
     for (const record of records) {
       const key = `${record.turnIndex ?? "unknown"}:${record.payload.role}:${payloadHash(record.payload)}`;
       if (harvested.has(key)) {
@@ -917,7 +926,7 @@ export async function harvestChatGptPayloads(
       visitedTurnIndices.push(turn.index);
       scrollTurnIntoView(currentTurn);
       await wait(delayMs);
-      await sample();
+      await sample(currentTurn);
     }
     coverageReachedBottom = visitedTurnIndices.length === turns.length;
   } else {
