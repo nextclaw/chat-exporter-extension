@@ -15,6 +15,12 @@ const required = [
 await Promise.all(required.map((path) => access(resolve(root, path))));
 
 const content = await readFile(resolve(root, "dist/assets/content.js"), "utf8");
-if (/^\s*import\s/m.test(content)) {
-  throw new Error("content script bundle must not contain static import statements");
+const moduleSyntax = [
+  /^\s*import\s/m,
+  /[;}\n]\s*import\s+[*{a-zA-Z_$"']/,
+  /\bimport\s*\(/,
+  /\bimport\.meta\b/,
+];
+if (moduleSyntax.some((pattern) => pattern.test(content))) {
+  throw new Error("content script bundle must not contain ES module syntax (import / import() / import.meta)");
 }
