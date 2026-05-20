@@ -168,6 +168,52 @@ describe("conversation rendering", () => {
     });
   });
 
+  it("includes ready attachment assets in the export bundle", () => {
+    const conversation: ConversationExport = {
+      service: "chatgpt",
+      format_version: FORMAT_VERSION,
+      exporter_version: EXPORTER_VERSION,
+      conversation_id: "attachment-asset",
+      title: "附件导出",
+      title_source: "test",
+      url: "https://chatgpt.com/c/attachment-asset",
+      exported_at: "2026-04-29T00:00:00+00:00",
+      message_count: 1,
+      scroll_debug: {},
+      assets: [
+        {
+          id: "attachment-001",
+          kind: "attachment",
+          original_url: "https://example.com/report.pdf",
+          download_url: "https://example.com/report.pdf",
+          local_path: "./chatgpt__附件导出__attachment-asset_assets/001__report.pdf",
+          filename: "chatgpt__附件导出__attachment-asset_assets/001__report.pdf",
+          alt: "",
+          display_name: "report.pdf",
+          mime_type: "application/pdf",
+          status: "ready",
+        },
+      ],
+      messages: [
+        enrichMessage({
+          id: "user-0000",
+          role: "user",
+          clipboard_text: "",
+          clipboard_html: "",
+          dom_markdown: "[Attachment: report.pdf](./chatgpt__附件导出__attachment-asset_assets/001__report.pdf)",
+          dom_html: "<p><a href=\"./chatgpt__附件导出__attachment-asset_assets/001__report.pdf\">Attachment: report.pdf</a></p>",
+          dom_text: "[Attachment: report.pdf]",
+        }),
+      ],
+    };
+
+    expect(buildExportBundle(conversation).files.map((file) => file.filename)).toEqual([
+      "chatgpt__附件导出__attachment-asset.json",
+      "chatgpt__附件导出__attachment-asset.md",
+      "chatgpt__附件导出__attachment-asset_assets/001__report.pdf",
+    ]);
+  });
+
   it("renders service-specific assistant headings", () => {
     const conversation: ConversationExport = {
       service: "gemini",

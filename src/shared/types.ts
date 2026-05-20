@@ -44,7 +44,7 @@ export interface ChatMessage {
   candidate_scores: Record<string, CandidateScore>;
 }
 
-export type ExportAssetKind = "image";
+export type ExportAssetKind = "image" | "attachment";
 export type ExportAssetStatus = "ready" | "unsupported";
 
 export interface ExportAsset {
@@ -55,6 +55,7 @@ export interface ExportAsset {
   local_path: string;
   filename: string;
   alt: string;
+  display_name?: string;
   mime_type: string;
   status: ExportAssetStatus;
   failure_reason?: string;

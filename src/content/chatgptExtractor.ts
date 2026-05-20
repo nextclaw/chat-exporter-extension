@@ -31,6 +31,7 @@ interface ImageSource {
 interface PayloadRecord {
   node: Element;
   payload: RolePayload;
+  turnIndex?: number;
 }
 
 interface TitleCandidate {
@@ -45,12 +46,27 @@ interface ScrollDebug {
   initial_turn_count: number;
   final_turn_count: number;
   transport: string;
+  harvest_strategy?: string;
+  turn_placeholders?: number;
+  mounted_role_nodes?: number;
+  harvested_messages?: number;
+  harvest_positions?: number[];
+  deduped_messages?: number;
+  visited_turn_count?: number;
+  visited_turn_indices?: number[];
+  missing_turn_indices?: number[];
+  coverage_reached_bottom?: boolean;
+  initial_scroll_top?: number;
+  restored_scroll_top?: number;
+  scroll_height?: number;
+  client_height?: number;
 }
 
 const NOISE_TEXT_PATTERN =
   /^(Thought for|Reasoned for|Searching the web|Finished thinking|Searching|Open in canvas)$/i;
 const NON_LANGUAGE_PATTERN =
   /^(Copy|Edit|Run|Download|Good response|Bad response|Retry|Open in canvas)$/i;
+const DOWNLOADABLE_ATTACHMENT_EXTENSIONS = new Set(["csv", "doc", "docx", "html", "json", "md", "pdf", "ppt", "pptx", "txt", "xls", "xlsx", "xml", "zip"]);
 
 function cleanText(value: string | null | undefined): string {
   return (value ?? "").replace(/\u00a0/g, " ").replace(/\s+\n/g, "\n").trim();
@@ -173,6 +189,81 @@ function collectImageSources(root: ParentNode): ImageSource[] {
   return [...sources.values()];
 }
 
+function extensionFromPath(value: string): string {
+  try {
+    return new URL(value, location.origin).pathname.toLowerCase().match(/\.([a-z0-9]{1,12})$/)?.[1] ?? "";
+  } catch {
+    return value.toLowerCase().match(/\.([a-z0-9]{1,12})(?:$|[?#])/)?.[1] ?? "";
+  }
+}
+
+function attachmentNameFromAnchor(anchor: HTMLAnchorElement): string {
+  const downloadName = cleanText(anchor.getAttribute("download"));
+  if (downloadName) {
+    return downloadName;
+  }
+  const label = cleanText(anchor.getAttribute("aria-label") ?? anchor.getAttribute("title") ?? getElementText(anchor));
+  if (label && !/^https?:\/\//i.test(label)) {
+    return label;
+  }
+  try {
+    return decodeURIComponent(new URL(anchor.href, location.origin).pathname.split("/").filter(Boolean).pop() ?? "attachment");
+  } catch {
+    return "attachment";
+  }
+}
+
+function isAttachmentContext(anchor: HTMLAnchorElement): boolean {
+  if (anchor.hasAttribute("download")) {
+    return true;
+  }
+  if (anchor.closest("[data-testid*='attachment' i], [data-testid*='file' i], [data-testid*='document' i], [data-testid*='download' i], .attachment, .artifact")) {
+    return true;
+  }
+  const label = `${anchor.getAttribute("aria-label") ?? ""} ${anchor.getAttribute("title") ?? ""} ${getElementText(anchor)}`;
+  return /\b(?:download|attachment|document|file)\b|下载|附件|文件/i.test(label);
+}
+
+async function normalizeStaticAttachments(root: ParentNode, assetCollector?: ImageAssetCollector): Promise<void> {
+  if (!assetCollector) {
+    return;
+  }
+  for (const anchor of Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+    const href = cleanText(anchor.href || anchor.getAttribute("href"));
+    const extension = extensionFromPath(href);
+    if (!href || !DOWNLOADABLE_ATTACHMENT_EXTENSIONS.has(extension) || !isAttachmentContext(anchor)) {
+      continue;
+    }
+    const name = attachmentNameFromAnchor(anchor);
+    const asset = await assetCollector.registerAttachmentUrl(href, name);
+    if (asset?.status !== "ready") {
+      continue;
+    }
+    anchor.href = asset.local_path;
+    anchor.textContent = `Attachment: ${name}`;
+  }
+}
+
+function attachmentNameFromElement(element: Element): string {
+  const label = cleanText(element.getAttribute("aria-label") ?? element.getAttribute("title") ?? getElementText(element));
+  return cleanText(label.match(/[\p{L}\p{N}][\p{L}\p{N} ._-]*\.(?:csv|docx?|html|json|md|pdf|pptx?|txt|xlsx?|xml|zip)\b/iu)?.[0] ?? "");
+}
+
+function normalizeChatGptAttachmentPlaceholders(root: ParentNode): void {
+  root.querySelectorAll<Element>("[class~='group/file-tile'], [data-testid*='attachment' i], [data-testid*='file' i], [data-testid*='document' i]").forEach((node) => {
+    if (node.querySelector("a[href]")) {
+      return;
+    }
+    const name = attachmentNameFromElement(node);
+    if (!name) {
+      return;
+    }
+    const replacement = document.createElement("p");
+    replacement.textContent = `[Attachment: ${name}]`;
+    node.replaceWith(replacement);
+  });
+}
+
 function hasDescendantClass(root: ParentNode, className: string): boolean {
   const elements = root instanceof Element ? [root, ...Array.from(root.querySelectorAll("*"))] : Array.from(root.querySelectorAll("*"));
   return elements.some((element) => element.classList.contains(className));
@@ -196,6 +287,13 @@ function chatGptImageGenTurns(root: ParentNode): Element[] {
   return candidates.filter((candidate) => !candidates.some((other) => other !== candidate && other.contains(candidate)));
 }
 
+function chatGptTurnIndex(node: Element): number | undefined {
+  const turn = node.closest("[data-testid^='conversation-turn-']");
+  const testId = turn?.getAttribute("data-testid") ?? "";
+  const match = testId.match(/^conversation-turn-(\d+)$/);
+  return match ? Number(match[1]) : undefined;
+}
+
 async function payloadFromRoleElement(roleElement: Element, assetCollector?: ImageAssetCollector): Promise<RolePayload | undefined> {
   const role = roleElement.getAttribute("data-message-author-role");
   if (role !== "user" && role !== "assistant") {
@@ -205,6 +303,10 @@ async function payloadFromRoleElement(roleElement: Element, assetCollector?: Ima
   const clone = pickSourceRoot(roleElement, role).cloneNode(true) as Element;
   normalizeMath(clone);
   await normalizeMedia(clone, assetCollector);
+  await normalizeStaticAttachments(clone, assetCollector);
+  if (role === "user") {
+    normalizeChatGptAttachmentPlaceholders(clone);
+  }
   normalizeCodeBlocks(clone);
   removeNoise(clone);
   clone.querySelectorAll("a").forEach((anchor) => {
@@ -329,25 +431,27 @@ function pickSourceRoot(roleElement: Element, role: Role): Element {
   return roleElement;
 }
 
-export async function extractRolePayloads(root: ParentNode = document, assetCollector?: ImageAssetCollector): Promise<RolePayload[]> {
+async function extractRolePayloadRecords(root: ParentNode = document, assetCollector?: ImageAssetCollector): Promise<PayloadRecord[]> {
   const records: PayloadRecord[] = [];
   for (const roleElement of Array.from(root.querySelectorAll("[data-message-author-role]"))) {
     const payload = await payloadFromRoleElement(roleElement, assetCollector);
     if (payload) {
-      records.push({ node: roleElement, payload });
+      records.push({ node: roleElement, payload, turnIndex: chatGptTurnIndex(roleElement) });
     }
   }
 
   for (const turn of chatGptImageGenTurns(root)) {
     const payload = await payloadFromChatGptImageGenTurn(turn, assetCollector);
     if (payload) {
-      records.push({ node: turn, payload });
+      records.push({ node: turn, payload, turnIndex: chatGptTurnIndex(turn) });
     }
   }
 
-  return records
-    .sort((left, right) => compareDocumentOrder(left.node, right.node))
-    .map((record) => record.payload);
+  return records.sort((left, right) => compareDocumentOrder(left.node, right.node));
+}
+
+export async function extractRolePayloads(root: ParentNode = document, assetCollector?: ImageAssetCollector): Promise<RolePayload[]> {
+  return (await extractRolePayloadRecords(root, assetCollector)).map((record) => record.payload);
 }
 
 function addRecord(records: Array<{ role: Role; node: Element; text: string }>, role: Role, node: Element | null): void {
@@ -483,6 +587,7 @@ export async function extractGeminiRolePayloads(root: ParentNode = document, ass
     const sourceNode = record.role === "user" ? record.node.querySelector(".query-text") ?? record.node : record.node;
     const clone = sourceNode.cloneNode(true) as Element;
     await normalizeMedia(clone, assetCollector);
+    await normalizeStaticAttachments(clone, assetCollector);
     normalizeCodeBlocks(clone);
     removeGeminiNoise(clone);
     const domMarkdown =
@@ -554,8 +659,9 @@ export async function extractClaudeRolePayloads(root: ParentNode = document, ass
   const payloads: RolePayload[] = [];
   for (const record of compactRecords(records)) {
     const clone = record.node.cloneNode(true) as Element;
-    normalizeClaudeSpecialBlocks(clone);
     await normalizeMedia(clone, assetCollector);
+    await normalizeStaticAttachments(clone, assetCollector);
+    normalizeClaudeSpecialBlocks(clone);
     normalizeCodeBlocks(clone);
     removeClaudeNoise(clone);
     const domHtml = cleanText(clone.innerHTML || clone.outerHTML);
@@ -709,6 +815,164 @@ function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+function scrollTopOf(container: HTMLElement | Window): number {
+  return container === window ? window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0 : (container as HTMLElement).scrollTop;
+}
+
+function scrollHeightOf(container: HTMLElement | Window): number {
+  return container === window ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) : (container as HTMLElement).scrollHeight;
+}
+
+function clientHeightOf(container: HTMLElement | Window): number {
+  return container === window ? window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight || 0 : (container as HTMLElement).clientHeight;
+}
+
+function scrollToPosition(container: HTMLElement | Window, position: number): void {
+  if (container === window) {
+    window.scrollTo(0, position);
+    return;
+  }
+  (container as HTMLElement).scrollTop = position;
+}
+
+function chatGptConversationTurnElements(root: ParentNode = document): Array<{ node: HTMLElement; index: number }> {
+  return Array.from(root.querySelectorAll<HTMLElement>("[data-testid^='conversation-turn-']"))
+    .map((node) => {
+      const match = (node.getAttribute("data-testid") ?? "").match(/^conversation-turn-(\d+)$/);
+      return match ? { node, index: Number(match[1]) } : undefined;
+    })
+    .filter((turn): turn is { node: HTMLElement; index: number } => Boolean(turn))
+    .sort((left, right) => left.index - right.index);
+}
+
+function scrollTurnIntoView(turn: HTMLElement): void {
+  if (typeof turn.scrollIntoView === "function") {
+    turn.scrollIntoView({ block: "center" });
+  }
+}
+
+function payloadHash(payload: RolePayload): string {
+  const value = cleanText(payload.dom_markdown || payload.dom_text || payload.dom_html).replace(/\s+/g, " ");
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+interface HarvestedPayloadRecord extends PayloadRecord {
+  firstSeenSequence: number;
+}
+
+function compareHarvestedRecords(left: HarvestedPayloadRecord, right: HarvestedPayloadRecord): number {
+  const leftTurn = left.turnIndex ?? Number.MAX_SAFE_INTEGER;
+  const rightTurn = right.turnIndex ?? Number.MAX_SAFE_INTEGER;
+  if (leftTurn !== rightTurn) {
+    return leftTurn - rightTurn;
+  }
+  return left.firstSeenSequence - right.firstSeenSequence;
+}
+
+export async function harvestChatGptPayloads(
+  assetCollector: ImageAssetCollector,
+  options: { delayMs?: number; maxSamples?: number; viewportStepRatio?: number } = {},
+): Promise<{ payloads: RolePayload[]; debug: ScrollDebug }> {
+  const delayMs = options.delayMs ?? 250;
+  const viewportStepRatio = options.viewportStepRatio ?? 0.85;
+  const container = findScrollContainer("chatgpt");
+  const isWindow = container === window;
+  const initialScrollTop = scrollTopOf(container);
+  const initialTurnCount = turnCount("chatgpt");
+  const harvested = new Map<string, HarvestedPayloadRecord>();
+  const harvestPositions: number[] = [];
+  let firstSeenSequence = 0;
+  let dedupedMessages = 0;
+
+  const sample = async (): Promise<void> => {
+    harvestPositions.push(Math.round(scrollTopOf(container)));
+    const records = await extractRolePayloadRecords(document, assetCollector);
+    for (const record of records) {
+      const key = `${record.turnIndex ?? "unknown"}:${record.payload.role}:${payloadHash(record.payload)}`;
+      if (harvested.has(key)) {
+        dedupedMessages += 1;
+        continue;
+      }
+      harvested.set(key, { ...record, firstSeenSequence });
+      firstSeenSequence += 1;
+    }
+  };
+
+  const turns = chatGptConversationTurnElements();
+  const visitedTurnIndices: number[] = [];
+  let harvestStrategy = "turn-anchor";
+  let coverageReachedBottom = false;
+
+  if (turns.length > 0) {
+    await sample();
+    for (const turn of turns) {
+      const currentTurn = document.querySelector<HTMLElement>(`[data-testid='conversation-turn-${turn.index}']`);
+      if (!currentTurn) {
+        continue;
+      }
+      visitedTurnIndices.push(turn.index);
+      scrollTurnIntoView(currentTurn);
+      await wait(delayMs);
+      await sample();
+    }
+    coverageReachedBottom = visitedTurnIndices.length === turns.length;
+  } else {
+    harvestStrategy = "adaptive-scroll";
+    await sample();
+    scrollToPosition(container, 0);
+    await wait(delayMs);
+    await sample();
+
+    const maxScrollTop = Math.max(0, scrollHeightOf(container) - clientHeightOf(container));
+    const step = Math.max(300, Math.floor(clientHeightOf(container) * viewportStepRatio) || 300);
+    const positions = new Set<number>([0, maxScrollTop]);
+    for (let position = step; position < maxScrollTop; position += step) {
+      positions.add(position);
+    }
+    for (const position of [...positions].sort((left, right) => left - right)) {
+      scrollToPosition(container, position);
+      await wait(delayMs);
+      await sample();
+    }
+    coverageReachedBottom = harvestPositions.some((position) => Math.abs(position - maxScrollTop) <= 2);
+  }
+
+  scrollToPosition(container, initialScrollTop);
+  await wait(delayMs);
+
+  const payloads = [...harvested.values()].sort(compareHarvestedRecords).map((record) => record.payload);
+  const harvestedTurnIndices = new Set([...harvested.values()].map((record) => record.turnIndex).filter((index): index is number => typeof index === "number"));
+  const missingTurnIndices = visitedTurnIndices.filter((index) => !harvestedTurnIndices.has(index));
+  return {
+    payloads,
+    debug: {
+      attempts: harvestPositions.length,
+      stable_rounds: 0,
+      initial_turn_count: initialTurnCount,
+      final_turn_count: turnCount("chatgpt"),
+      transport: isWindow ? "window" : "container",
+      harvest_strategy: harvestStrategy,
+      turn_placeholders: document.querySelectorAll("[data-testid^='conversation-turn-']").length,
+      mounted_role_nodes: document.querySelectorAll("[data-message-author-role]").length,
+      harvested_messages: payloads.length,
+      harvest_positions: harvestPositions,
+      deduped_messages: dedupedMessages,
+      visited_turn_count: visitedTurnIndices.length,
+      visited_turn_indices: visitedTurnIndices,
+      missing_turn_indices: missingTurnIndices,
+      coverage_reached_bottom: coverageReachedBottom,
+      initial_scroll_top: Math.round(initialScrollTop),
+      restored_scroll_top: Math.round(scrollTopOf(container)),
+      scroll_height: scrollHeightOf(container),
+      client_height: clientHeightOf(container),
+    },
+  };
+}
+
 export async function scrollConversationToTop(service: Service = "chatgpt", maxAttempts = 8, stableRoundsTarget = 2, delayMs = 250): Promise<ScrollDebug> {
   const container = findScrollContainer(service);
   const initialTurnCount = turnCount(service);
@@ -813,7 +1077,6 @@ export async function exportCurrentConversation(): Promise<{ status: PageStatus;
     siteLabel: parsed.siteLabel,
     conversationId: parsed.conversationId,
   };
-  const scrollDebug = await scrollConversationToTop(parsed.service);
   const selectedTitle = selectTitle(titleCandidates(parsed.url, parsed.service), parsed.service);
   const baseName = buildOutputBaseName({
     service: parsed.service,
@@ -821,7 +1084,16 @@ export async function exportCurrentConversation(): Promise<{ status: PageStatus;
     conversation_id: parsed.conversationId,
   });
   const assetCollector = new ImageAssetCollector(baseName);
-  const payloads = await extractPayloadsForService(parsed.service, assetCollector);
+  let payloads: RolePayload[];
+  let scrollDebug: ScrollDebug;
+  if (parsed.service === "chatgpt") {
+    const harvest = await harvestChatGptPayloads(assetCollector);
+    payloads = harvest.payloads;
+    scrollDebug = harvest.debug;
+  } else {
+    scrollDebug = await scrollConversationToTop(parsed.service);
+    payloads = await extractPayloadsForService(parsed.service, assetCollector);
+  }
   const messages = payloads.map(buildMessage).filter((message) => message.final_markdown.trim());
   if (!messages.length) {
     return {

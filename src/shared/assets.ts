@@ -12,6 +12,23 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   webp: "image/webp",
 };
 
+const ATTACHMENT_MIME_BY_EXTENSION: Record<string, string> = {
+  csv: "text/csv",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  html: "text/html",
+  json: "application/json",
+  md: "text/markdown",
+  pdf: "application/pdf",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xml: "application/xml",
+  zip: "application/zip",
+};
+
 function extensionFromMimeType(mimeType: string): string {
   const normalized = mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
   if (normalized === "image/svg+xml") {
@@ -42,12 +59,39 @@ function extensionFromUrl(url: string): string {
   return "png";
 }
 
+function attachmentExtensionFromUrl(url: string, fallback = "bin"): string {
+  const dataMatch = url.match(/^data:([^;,]+)[;,]/i);
+  if (dataMatch) {
+    const mime = dataMatch[1].toLowerCase().split(";")[0]?.trim() ?? "";
+    return Object.entries(ATTACHMENT_MIME_BY_EXTENSION).find(([, value]) => value === mime)?.[0] ?? fallback;
+  }
+
+  try {
+    const parsed = new URL(url, "https://example.invalid");
+    const match = parsed.pathname.toLowerCase().match(/\.([a-z0-9]{1,12})$/);
+    if (match?.[1] && ATTACHMENT_MIME_BY_EXTENSION[match[1]]) {
+      return match[1];
+    }
+  } catch {
+    // Keep the default below for relative or malformed provider URLs.
+  }
+  return fallback;
+}
+
 function mimeTypeFromUrl(url: string, extension: string): string {
   const dataMatch = url.match(/^data:([^;,]+)[;,]/i);
   if (dataMatch) {
     return dataMatch[1].toLowerCase();
   }
   return IMAGE_MIME_BY_EXTENSION[extension] ?? "image/png";
+}
+
+function attachmentMimeTypeFromUrl(url: string, extension: string): string {
+  const dataMatch = url.match(/^data:([^;,]+)[;,]/i);
+  if (dataMatch) {
+    return dataMatch[1].toLowerCase();
+  }
+  return ATTACHMENT_MIME_BY_EXTENSION[extension] ?? "application/octet-stream";
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -137,6 +181,42 @@ export class ImageAssetCollector {
     };
 
     this.assetsByOriginalUrl.set(originalUrl, asset);
+    this.assets.push(asset);
+    return asset;
+  }
+
+  async registerAttachmentUrl(originalUrl: string, displayName = ""): Promise<ExportAsset | undefined> {
+    if (!originalUrl) {
+      return undefined;
+    }
+
+    const key = `attachment:${originalUrl}`;
+    const existing = this.assetsByOriginalUrl.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    this.sequence += 1;
+    const extension = attachmentExtensionFromUrl(originalUrl);
+    const mimeType = attachmentMimeTypeFromUrl(originalUrl, extension);
+    const label = sanitizeFilenamePart(displayName.replace(new RegExp(`\\.${extension}$`, "i"), ""), "attachment");
+    const fileStem = `${String(this.sequence).padStart(3, "0")}__${label}`;
+    const filename = `${this.baseName}_assets/${fileStem}.${extension}`;
+    const asset: ExportAsset = {
+      id: `attachment-${String(this.sequence).padStart(3, "0")}`,
+      kind: "attachment",
+      original_url: originalUrl,
+      download_url: /^(?:https?:|data:)/i.test(originalUrl) ? originalUrl : "",
+      local_path: `./${filename}`,
+      filename,
+      alt: "",
+      display_name: displayName,
+      mime_type: mimeType,
+      status: /^(?:https?:|data:)/i.test(originalUrl) ? "ready" : "unsupported",
+      ...(/^(?:https?:|data:)/i.test(originalUrl) ? {} : { failure_reason: "Attachment URL is not an http(s) or data URL." }),
+    };
+
+    this.assetsByOriginalUrl.set(key, asset);
     this.assets.push(asset);
     return asset;
   }

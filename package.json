@@ -1,6 +1,6 @@
 {
   "name": "chat-exporter-extension",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -13,7 +13,7 @@
   "bugs": {
     "url": "https://github.com/nextclaw/chat-exporter-extension/issues"
   },
-  "description": "Chrome extension for exporting the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and image files.",
+  "description": "Chrome extension for exporting the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and asset files.",
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
     "build": "npm run clean && vite build && vite build --config vite.content.config.ts && node scripts/validate-build.mjs",

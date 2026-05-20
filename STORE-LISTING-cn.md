@@ -15,7 +15,7 @@ Chat Exporter
 短描述：
 
 ```text
-Export the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and image files.
+Export the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and asset files.
 ```
 
 详细描述：
@@ -23,7 +23,9 @@ Export the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdo
 ```text
 Chat Exporter saves the currently open ChatGPT, Gemini, or Claude conversation as local files.
 
-It creates a rich JSON export, a readable Markdown transcript, and local image asset files when the conversation contains images.
+It creates a rich JSON export, a readable Markdown transcript, and local asset files when the conversation contains images or static download links.
+
+Long ChatGPT conversations are harvested turn by turn so virtualized web pages do not drop older messages.
 
 The extension is local-only: it does not call a remote service, does not use analytics, does not read the clipboard, and does not upload conversation content anywhere.
 
@@ -50,7 +52,7 @@ English
 单一用途：
 
 ```text
-Export the current supported AI chat conversation page to local JSON, Markdown, and image asset files.
+Export the current supported AI chat conversation page to local JSON, Markdown, and asset files.
 ```
 
 远程代码：
@@ -88,7 +90,7 @@ Used to inject the packaged content script into an already-open supported conver
 `downloads`：
 
 ```text
-Used to save the generated JSON, Markdown, and image asset files locally.
+Used to save the generated JSON, Markdown, and asset files locally.
 ```
 
 Host permissions / content script matches：
@@ -106,7 +108,7 @@ Limited to ChatGPT, Gemini, and Claude conversation pages so the extension can r
    - https://claude.ai/chat/<conversation_id>
 2. Open the Chat Exporter extension popup.
 3. Click Export.
-4. Confirm that JSON and Markdown files are downloaded locally, plus image asset files when the conversation contains images.
+4. Confirm that JSON and Markdown files are downloaded locally, plus asset files when the conversation contains images or static download links.
 
 No test account is provided. Reviewers can use any account that can access a supported conversation page.
 ```

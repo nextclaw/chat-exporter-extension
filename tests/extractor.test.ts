@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { extractClaudeRolePayloads, extractGeminiRolePayloads, extractRolePayloads, probeCurrentPage } from "../src/content/chatgptExtractor";
+import {
+  extractClaudeRolePayloads,
+  extractGeminiRolePayloads,
+  extractRolePayloads,
+  harvestChatGptPayloads,
+  probeCurrentPage,
+} from "../src/content/chatgptExtractor";
 import { ImageAssetCollector } from "../src/shared/assets";
 import { enrichMessage } from "../src/shared/markdown";
 
@@ -166,6 +172,159 @@ describe("extractRolePayloads", () => {
         original_url: "https://example.com/render.png",
         local_path: "./chatgpt__图片链接__fixture-chat_assets/001__下载图片.png",
       },
+    ]);
+  });
+
+  it("registers static ChatGPT attachment links without touching normal references", async () => {
+    document.body.innerHTML = `
+      <article data-message-author-role="user">
+        <div class="whitespace-pre-wrap">
+          <div class="group/file-tile">
+            <a download="notes.md" href="https://chatgpt.com/backend-api/files/notes.md">notes.md</a>
+          </div>
+          <a href="https://example.com/reference.pdf">reference</a>
+        </div>
+      </article>
+    `;
+
+    const collector = new ImageAssetCollector("chatgpt__附件测试__fixture-chat");
+    const [payload] = await extractRolePayloads(document, collector);
+    expect(payload.dom_markdown).toContain("[Attachment: notes.md](./chatgpt__附件测试__fixture-chat_assets/001__notes.md)");
+    expect(payload.dom_markdown).toContain("[reference](https://example.com/reference.pdf)");
+    expect(collector.listAssets()).toMatchObject([
+      {
+        kind: "attachment",
+        original_url: "https://chatgpt.com/backend-api/files/notes.md",
+        filename: "chatgpt__附件测试__fixture-chat_assets/001__notes.md",
+        status: "ready",
+      },
+    ]);
+  });
+
+  it("keeps no-href ChatGPT file tiles as text placeholders", async () => {
+    document.body.innerHTML = `
+      <article data-message-author-role="user">
+        <div class="whitespace-pre-wrap">
+          <div class="group/file-tile"><span>reading-notes.md</span></div>
+        </div>
+      </article>
+    `;
+
+    const collector = new ImageAssetCollector("chatgpt__附件测试__fixture-chat");
+    const [payload] = await extractRolePayloads(document, collector);
+    expect(payload.dom_markdown).toContain("[Attachment: reading-notes.md]");
+    expect(payload.dom_markdown).not.toContain("](./chatgpt__附件测试__fixture-chat_assets/");
+    expect(collector.listAssets()).toHaveLength(0);
+  });
+
+  it("harvests ChatGPT virtualized turns by visiting turn anchors", async () => {
+    const imageUrl =
+      "https://chatgpt.com/backend-api/estuary/content?id=file_virtualized_image&ts=1&p=fs&cid=1&sig=fixture&v=0";
+    const scrollContainer = document.createElement("div");
+    scrollContainer.setAttribute("data-testid", "conversation-turns");
+    const totalPairs = 20;
+    const imageTurnIndex = totalPairs * 2 + 1;
+    let scrollTop = imageTurnIndex * 1000;
+    Object.defineProperties(scrollContainer, {
+      clientHeight: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 60000 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+    });
+    const renderAround = (centerIndex: number) => {
+      scrollTop = centerIndex * 1000;
+      for (const node of Array.from(scrollContainer.querySelectorAll<HTMLElement>("[data-testid^='conversation-turn-']"))) {
+        const match = (node.getAttribute("data-testid") ?? "").match(/^conversation-turn-(\d+)$/);
+        const turnIndex = match ? Number(match[1]) : 0;
+        if (Math.abs(turnIndex - centerIndex) > 1) {
+          node.innerHTML = "";
+          continue;
+        }
+        if (turnIndex === imageTurnIndex) {
+          node.innerHTML = `
+            <div class="agent-turn">
+              <div class="group/imagegen-image"><img alt="示意图" src="${imageUrl}"></div>
+              <button data-testid="good-image-turn-action-button">Good</button>
+            </div>
+          `;
+          continue;
+        }
+        const pair = Math.ceil(turnIndex / 2);
+        node.innerHTML =
+          turnIndex % 2 === 1
+            ? `<article data-message-author-role="user"><div class="whitespace-pre-wrap">Prompt ${pair}</div></article>`
+            : `<article data-message-author-role="assistant"><div class="markdown"><p>Answer ${pair}</p></div></article>`;
+      }
+    };
+    for (let index = 1; index <= imageTurnIndex; index += 1) {
+      const turn = document.createElement("div");
+      turn.setAttribute("data-testid", `conversation-turn-${index}`);
+      turn.scrollIntoView = () => renderAround(index);
+      scrollContainer.append(turn);
+    }
+    document.body.append(scrollContainer);
+    renderAround(imageTurnIndex);
+
+    const collector = new ImageAssetCollector("chatgpt__虚拟列表__fixture-chat");
+    const result = await harvestChatGptPayloads(collector, { delayMs: 0, viewportStepRatio: 1, maxSamples: 10 });
+    const expected = Array.from({ length: totalPairs }, (_, index) => [`Prompt ${index + 1}`, `Answer ${index + 1}`]).flat();
+
+    expect(result.payloads.map((payload) => payload.dom_text)).toEqual([...expected, "[Image: 示意图]"]);
+    expect(result.debug.harvest_strategy).toBe("turn-anchor");
+    expect(result.debug.visited_turn_count).toBe(imageTurnIndex);
+    expect(result.debug.missing_turn_indices).toEqual([]);
+    expect(result.debug.coverage_reached_bottom).toBe(true);
+    expect(result.debug.harvested_messages).toBe(41);
+    expect(result.debug.deduped_messages).toBeGreaterThan(0);
+    expect(result.debug.restored_scroll_top).toBe(imageTurnIndex * 1000);
+    expect(result.payloads[40].dom_markdown).toContain("![示意图](./chatgpt__虚拟列表__fixture-chat_assets/001__示意图.png)");
+  });
+
+  it("uses a full adaptive sweep when turn anchors are unavailable", async () => {
+    const scrollContainer = document.createElement("div");
+    scrollContainer.setAttribute("aria-label", "Chat history");
+    let scrollTop = 0;
+    Object.defineProperties(scrollContainer, {
+      clientHeight: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 5000 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+          const bucket = Math.min(5, Math.floor(value / 1000) + 1);
+          scrollContainer.innerHTML = `
+            <article data-message-author-role="user"><div class="whitespace-pre-wrap">Fallback prompt ${bucket}</div></article>
+            <article data-message-author-role="assistant"><div class="markdown"><p>Fallback answer ${bucket}</p></div></article>
+          `;
+        },
+      },
+    });
+    document.body.append(scrollContainer);
+    scrollContainer.scrollTop = 0;
+
+    const collector = new ImageAssetCollector("chatgpt__fallback__fixture-chat");
+    const result = await harvestChatGptPayloads(collector, { delayMs: 0, viewportStepRatio: 1, maxSamples: 2 });
+
+    expect(result.debug.harvest_strategy).toBe("adaptive-scroll");
+    expect(result.debug.coverage_reached_bottom).toBe(true);
+    expect(result.debug.harvest_positions?.at(-1)).toBe(4500);
+    expect(result.payloads.map((payload) => payload.dom_text)).toEqual([
+      "Fallback prompt 1",
+      "Fallback answer 1",
+      "Fallback prompt 2",
+      "Fallback answer 2",
+      "Fallback prompt 3",
+      "Fallback answer 3",
+      "Fallback prompt 4",
+      "Fallback answer 4",
+      "Fallback prompt 5",
+      "Fallback answer 5",
     ]);
   });
 });
