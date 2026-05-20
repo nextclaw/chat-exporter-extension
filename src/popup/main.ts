@@ -5,12 +5,15 @@ import {
   EXPORT_PORT_NAME,
   type DownloadSummary,
   type ExportFormat,
+  type LastExportStatus,
   type PageStatus,
   type PortMessageFromBackground,
   type ProbePageMessage,
 } from "../shared/types";
 import { parseConversationUrl } from "../shared/url";
-import { loadSelectedFormats, saveSelectedFormats } from "./storage";
+import { loadSelectedFormats, saveSelectedFormats } from "../shared/storage";
+
+const LAST_STATUS_KEY = "lastExportStatus";
 
 function requireElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -101,11 +104,19 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
   return tabs[0];
 }
 
+function truncateTitle(title: string, limit = 60): string {
+  return title.length > limit ? `${title.slice(0, limit - 1)}…` : title;
+}
+
 function pageStatusLabel(status: PageStatus): string {
-  if (status.ok) {
-    return `Ready: ${status.siteLabel ?? "Chat"} ${status.conversationId}`;
+  if (!status.ok) {
+    return status.reason ?? "Current page is not supported.";
   }
-  return status.reason ?? "Current page is not supported.";
+  const head = status.title ? truncateTitle(status.title) : `${status.siteLabel ?? "Chat"} ${status.conversationId}`;
+  const count = typeof status.messageCount === "number" && status.messageCount > 0
+    ? ` · ${status.messageCount} ${status.messageCount === 1 ? "message" : "messages"}`
+    : "";
+  return `Ready: ${head}${count}`;
 }
 
 async function sendMessage<T>(tabId: number, message: unknown): Promise<T> {
@@ -285,8 +296,27 @@ window.addEventListener("unload", () => {
   activePort = undefined;
 });
 
+async function consumeLastExportStatus(): Promise<void> {
+  if (!chrome?.storage?.session) {
+    return;
+  }
+  try {
+    const stored = await chrome.storage.session.get(LAST_STATUS_KEY);
+    const last = stored[LAST_STATUS_KEY] as LastExportStatus | undefined;
+    if (!last || typeof last !== "object" || typeof last.message !== "string") {
+      return;
+    }
+    await chrome.storage.session.remove(LAST_STATUS_KEY);
+    const triggerLabel = last.trigger === "shortcut" ? "shortcut" : "context menu";
+    setResultStatus(`Last ${triggerLabel} export: ${last.message}`, last.ok ? "success" : "error");
+  } catch {
+    // Session storage may be unavailable in some Chrome contexts; skip silently.
+  }
+}
+
 void (async () => {
   selectedFormats = await loadSelectedFormats();
   renderFormatCheckboxes();
+  await consumeLastExportStatus();
   await probe();
 })();

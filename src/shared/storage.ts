@@ -1,4 +1,4 @@
-import { ALL_EXPORT_FORMATS, DEFAULT_EXPORT_FORMATS, type ExportFormat } from "../shared/types";
+import { ALL_EXPORT_FORMATS, DEFAULT_EXPORT_FORMATS, type ExportFormat } from "./types";
 
 const STORAGE_KEY = "exportFormats";
 

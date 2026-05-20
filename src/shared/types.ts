@@ -4,8 +4,8 @@ export const EXPORTER_VERSION = "extension-0.1.0";
 export type Service = "chatgpt" | "gemini" | "claude";
 export type Role = "user" | "assistant";
 
-export type ExportFormat = "markdown" | "json";
-export const ALL_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown", "json"] as const;
+export type ExportFormat = "markdown" | "json" | "html";
+export const ALL_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown", "json", "html"] as const;
 export const DEFAULT_EXPORT_FORMATS: readonly ExportFormat[] = ["markdown"] as const;
 
 export const SITE_LABELS: Record<Service, string> = {
@@ -111,6 +111,8 @@ export interface PageStatus {
   service?: Service;
   siteLabel?: string;
   conversationId?: string;
+  title?: string;
+  messageCount?: number;
   reason?: string;
 }
 
@@ -173,3 +175,13 @@ export interface ExportErrorMessage {
 
 export type PortMessageFromPopup = StartExportMessage;
 export type PortMessageFromBackground = ExportProgressMessage | ExportDoneMessage | ExportErrorMessage;
+
+export type LastExportTrigger = "shortcut" | "context-menu";
+
+export interface LastExportStatus {
+  trigger: LastExportTrigger;
+  ok: boolean;
+  message: string;
+  summary?: DownloadSummary;
+  at: string;
+}

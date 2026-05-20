@@ -57,4 +57,4 @@ The uploadable ZIP is written to `release/`.
 
 GitHub Actions runs the same checks and uploads the generated ZIP as a workflow artifact on pushes, pull requests, and manual dispatches.
 
-Chrome Web Store publishing notes and prepared listing copy are in [STORE-LISTING.md](STORE-LISTING.md).
+Chrome Web Store publishing notes and prepared listing copy are in [STORE-LISTING.md](STORE-LISTING.md). Per-release user-visible changes are tracked in [CHANGELOG.md](CHANGELOG.md).

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadSelectedFormats, saveSelectedFormats } from "../src/popup/storage";
+import { loadSelectedFormats, saveSelectedFormats } from "../src/shared/storage";
 
 function withStorage(initial: Record<string, unknown> = {}) {
   const state: Record<string, unknown> = { ...initial };
@@ -40,7 +40,7 @@ describe("popup/storage", () => {
   });
 
   it("falls back to the default when stored entries are all invalid", async () => {
-    withStorage({ exportFormats: ["pdf", "html"] });
+    withStorage({ exportFormats: ["pdf", "epub"] });
     await expect(loadSelectedFormats()).resolves.toEqual(["markdown"]);
   });
 

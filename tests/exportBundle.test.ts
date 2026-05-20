@@ -115,4 +115,27 @@ describe("buildExportBundle format selection", () => {
       expect(markdown.content).toContain("Hello!");
     }
   });
+
+  it("emits HTML when requested", () => {
+    const bundle = buildExportBundle(makeConversation(), ["html"]);
+    expect(filenames(bundle.files)).toEqual([
+      "chatgpt__Demo__demo.html",
+      "chatgpt__Demo__demo_assets/001__pic.png",
+    ]);
+    const html = bundle.files.find((file) => file.filename.endsWith(".html"));
+    expect(html?.kind).toBe("text");
+    if (html?.kind === "text") {
+      expect(html.content.startsWith("<!doctype html>")).toBe(true);
+    }
+  });
+
+  it("emits Markdown then HTML then JSON when all three are selected", () => {
+    const bundle = buildExportBundle(makeConversation(), ["markdown", "json", "html"]);
+    expect(filenames(bundle.files)).toEqual([
+      "chatgpt__Demo__demo.md",
+      "chatgpt__Demo__demo.html",
+      "chatgpt__Demo__demo.json",
+      "chatgpt__Demo__demo_assets/001__pic.png",
+    ]);
+  });
 });

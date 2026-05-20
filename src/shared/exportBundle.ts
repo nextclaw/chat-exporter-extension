@@ -1,4 +1,5 @@
 import { buildOutputBaseName } from "./filename";
+import { renderConversationHtml } from "./html";
 import { renderConversationMarkdown } from "./markdown";
 import {
   DEFAULT_EXPORT_FORMATS,
@@ -21,6 +22,14 @@ export function buildExportBundle(
       filename: `${baseName}.md`,
       mimeType: "text/markdown;charset=utf-8",
       content: renderConversationMarkdown(conversation),
+    });
+  }
+  if (formats.includes("html")) {
+    textFiles.push({
+      kind: "text",
+      filename: `${baseName}.html`,
+      mimeType: "text/html;charset=utf-8",
+      content: renderConversationHtml(conversation),
     });
   }
   if (formats.includes("json")) {

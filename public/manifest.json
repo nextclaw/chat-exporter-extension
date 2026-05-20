@@ -1,12 +1,21 @@
 {
   "manifest_version": 3,
   "name": "Chat Exporter",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Export the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and asset files.",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "downloads", "scripting", "storage"],
+  "permissions": ["activeTab", "downloads", "scripting", "storage", "contextMenus"],
   "background": {
     "service_worker": "assets/background.js"
+  },
+  "commands": {
+    "export-current-chat": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "Export the current ChatGPT, Gemini, or Claude conversation"
+    }
   },
   "action": {
     "default_title": "Export current chat",
