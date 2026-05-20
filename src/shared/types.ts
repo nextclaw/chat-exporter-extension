@@ -133,3 +133,37 @@ export interface ProbePageMessage {
 }
 
 export type PopupMessage = ExportCurrentMessage | ProbePageMessage;
+
+export const EXPORT_PORT_NAME = "chat-exporter-export";
+
+export interface DownloadSummary {
+  textFiles: number;
+  assetFiles: number;
+  savedAssets: number;
+  failedAssets: number;
+}
+
+export interface StartExportMessage {
+  type: "START_EXPORT";
+  tabId: number;
+}
+
+export interface ExportProgressMessage {
+  type: "EXPORT_PROGRESS";
+  completed: number;
+  total: number;
+}
+
+export interface ExportDoneMessage {
+  type: "EXPORT_DONE";
+  status: PageStatus;
+  summary: DownloadSummary;
+}
+
+export interface ExportErrorMessage {
+  type: "EXPORT_ERROR";
+  message: string;
+}
+
+export type PortMessageFromPopup = StartExportMessage;
+export type PortMessageFromBackground = ExportProgressMessage | ExportDoneMessage | ExportErrorMessage;

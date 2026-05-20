@@ -5,6 +5,9 @@
   "description": "Export the current ChatGPT, Gemini, or Claude conversation to local JSON, Markdown, and asset files.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "downloads", "scripting"],
+  "background": {
+    "service_worker": "assets/background.js"
+  },
   "action": {
     "default_title": "Export current chat",
     "default_popup": "popup.html",
