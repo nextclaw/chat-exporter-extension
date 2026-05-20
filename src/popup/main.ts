@@ -1,6 +1,12 @@
 import "./style.css";
 
-import type { ExportFile, ExportResponse, PageStatus, ProbePageMessage } from "../shared/types";
+import {
+  EXPORT_PORT_NAME,
+  type DownloadSummary,
+  type PageStatus,
+  type PortMessageFromBackground,
+  type ProbePageMessage,
+} from "../shared/types";
 import { parseConversationUrl } from "../shared/url";
 
 function requireElement<T extends Element>(selector: string): T {
@@ -18,6 +24,7 @@ const exportButton = requireElement<HTMLButtonElement>("#export-button");
 type PopupState = "idle" | "exporting" | "completed" | "partial-failed" | "failed";
 
 let popupState: PopupState = "idle";
+let activePort: chrome.runtime.Port | undefined;
 
 function setPageStatus(message: string): void {
   pageStatusEl.textContent = message;
@@ -33,8 +40,8 @@ function setExportButton(label: string, disabled: boolean): void {
   exportButton.disabled = disabled;
 }
 
-function updateProgress(completed: number, total: number): void {
-  setResultStatus(`Downloading ${completed}/${total} files...`);
+function exportButtonLabel(): string {
+  return popupState === "partial-failed" ? "Export again" : "Export";
 }
 
 function schedulePopupClose(): void {
@@ -102,94 +109,6 @@ async function sendMessageWithInjection<T>(tab: chrome.tabs.Tab, message: unknow
   }
 }
 
-async function downloadFile(file: ExportFile): Promise<void> {
-  if (file.kind === "asset") {
-    await new Promise<void>((resolve, reject) => {
-      chrome.downloads.download(
-        {
-          url: file.url,
-          filename: file.filename,
-          saveAs: false,
-        },
-        () => {
-          const error = runtimeErrorMessage();
-          if (error) {
-            reject(new Error(error));
-            return;
-          }
-          resolve();
-        },
-      );
-    });
-    return;
-  }
-
-  const blob = new Blob([file.content], { type: file.mimeType });
-  const url = URL.createObjectURL(blob);
-  try {
-    await new Promise<void>((resolve, reject) => {
-      chrome.downloads.download(
-        {
-          url,
-          filename: file.filename,
-          saveAs: false,
-        },
-        () => {
-          const error = runtimeErrorMessage();
-          if (error) {
-            reject(new Error(error));
-            return;
-          }
-          resolve();
-        },
-      );
-    });
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-}
-
-interface DownloadSummary {
-  textFiles: number;
-  assetFiles: number;
-  savedAssets: number;
-  failedAssets: number;
-}
-
-async function downloadFiles(files: ExportFile[], onProgress?: (completed: number, total: number) => void): Promise<DownloadSummary> {
-  const summary: DownloadSummary = {
-    textFiles: 0,
-    assetFiles: 0,
-    savedAssets: 0,
-    failedAssets: 0,
-  };
-  let completed = 0;
-  const total = files.length;
-  onProgress?.(completed, total);
-
-  for (const file of files) {
-    if (file.kind === "asset") {
-      summary.assetFiles += 1;
-      try {
-        await downloadFile(file);
-        summary.savedAssets += 1;
-      } catch {
-        summary.failedAssets += 1;
-      }
-      completed += 1;
-      onProgress?.(completed, total);
-      continue;
-    }
-
-    await downloadFile(file);
-    summary.textFiles += 1;
-    completed += 1;
-    onProgress?.(completed, total);
-  }
-
-  return summary;
-}
-
 async function probe(): Promise<void> {
   if (popupState === "exporting" || popupState === "completed") {
     return;
@@ -197,7 +116,7 @@ async function probe(): Promise<void> {
 
   const tab = await activeTab();
   if (!tab?.id) {
-    setExportButton(popupState === "partial-failed" ? "Export again" : "Export", true);
+    setExportButton(exportButtonLabel(), true);
     setPageStatus("No active tab.");
     return;
   }
@@ -205,7 +124,7 @@ async function probe(): Promise<void> {
   if (tab.url) {
     const parsed = parseConversationUrl(tab.url);
     if (!parsed.ok) {
-      setExportButton(popupState === "partial-failed" ? "Export again" : "Export", true);
+      setExportButton(exportButtonLabel(), true);
       setPageStatus(parsed.reason);
       return;
     }
@@ -215,10 +134,10 @@ async function probe(): Promise<void> {
     const response = await sendMessageWithInjection<{ ok: true; status: PageStatus }>(tab, {
       type: "CHAT_EXPORTER_PROBE_PAGE",
     } satisfies ProbePageMessage);
-    setExportButton(popupState === "partial-failed" ? "Export again" : "Export", !response.status.ok);
+    setExportButton(exportButtonLabel(), !response.status.ok);
     setPageStatus(pageStatusLabel(response.status));
   } catch (error) {
-    setExportButton(popupState === "partial-failed" ? "Export again" : "Export", true);
+    setExportButton(exportButtonLabel(), true);
     setPageStatus(
       error instanceof Error && error.message
         ? `Content script unavailable: ${error.message}. Reload the page and try again.`
@@ -227,72 +146,87 @@ async function probe(): Promise<void> {
   }
 }
 
+function summaryToResultMessage(summary: DownloadSummary): string {
+  const imageStatus = summary.assetFiles
+    ? ` Images: ${summary.savedAssets}/${summary.assetFiles} saved.`
+    : "";
+  return `Saved ${summary.textFiles} text files.${imageStatus}`;
+}
+
+function handlePortMessage(message: PortMessageFromBackground): void {
+  if (message.type === "EXPORT_PROGRESS") {
+    setResultStatus(`Downloading ${message.completed}/${message.total} files...`);
+    return;
+  }
+
+  if (message.type === "EXPORT_DONE") {
+    setPageStatus(pageStatusLabel(message.status));
+    if (message.summary.failedAssets > 0) {
+      popupState = "partial-failed";
+      setResultStatus(summaryToResultMessage(message.summary), "error");
+      setExportButton("Export again", false);
+      return;
+    }
+    popupState = "completed";
+    setExportButton("Saved", true);
+    setResultStatus(`${summaryToResultMessage(message.summary)} Closing...`, "success");
+    schedulePopupClose();
+    return;
+  }
+
+  popupState = "failed";
+  setExportButton("Export", false);
+  setResultStatus(message.message, "error");
+}
+
 async function runExport(): Promise<void> {
   if (popupState === "exporting" || popupState === "completed") {
     return;
   }
 
+  const tab = await activeTab();
+  if (!tab?.id) {
+    setResultStatus("No active tab.", "error");
+    return;
+  }
+
+  if (tab.url) {
+    const parsed = parseConversationUrl(tab.url);
+    if (!parsed.ok) {
+      setResultStatus(parsed.reason, "error");
+      return;
+    }
+  }
+
+  const tabId = tab.id;
   popupState = "exporting";
   setExportButton("Exporting...", true);
   setResultStatus("Exporting...");
-  let shouldProbeAfter = true;
 
-  try {
-    const tab = await activeTab();
-    if (!tab?.id) {
-      throw new Error("No active tab.");
+  const port = chrome.runtime.connect({ name: EXPORT_PORT_NAME });
+  activePort = port;
+  port.onMessage.addListener(handlePortMessage);
+  port.onDisconnect.addListener(() => {
+    activePort = undefined;
+    if (popupState === "exporting") {
+      popupState = "failed";
+      setExportButton("Export", false);
+      setResultStatus(
+        chrome.runtime.lastError?.message ?? "Background worker disconnected before the export finished.",
+        "error",
+      );
     }
-
-    if (tab.url) {
-      const parsed = parseConversationUrl(tab.url);
-      if (!parsed.ok) {
-        throw new Error(parsed.reason);
-      }
-    }
-
-    const response = await sendMessageWithInjection<ExportResponse>(tab, {
-      type: "CHAT_EXPORTER_EXPORT_CURRENT",
-    });
-
-    if (!response.ok) {
-      throw new Error(response.error);
-    }
-
-    const parsed = parseConversationUrl(response.bundle.conversation.url);
-    if (!parsed.ok) {
-      throw new Error(parsed.reason);
-    }
-
-    const summary = await downloadFiles(response.bundle.files, updateProgress);
-    setPageStatus(pageStatusLabel(response.status));
-    const imageStatus = summary.assetFiles
-      ? ` Images: ${summary.savedAssets}/${summary.assetFiles} saved.`
-      : "";
-    if (summary.failedAssets) {
-      popupState = "partial-failed";
-      setResultStatus(`Saved ${summary.textFiles} text files.${imageStatus}`, "error");
-      setExportButton("Export again", false);
-      return;
-    }
-
-    popupState = "completed";
-    shouldProbeAfter = false;
-    setExportButton("Saved", true);
-    setResultStatus(`Saved ${summary.textFiles} text files.${imageStatus} Closing...`, "success");
-    schedulePopupClose();
-  } catch (error) {
-    popupState = "failed";
-    setExportButton("Export", false);
-    setResultStatus(error instanceof Error ? error.message : "Export failed.", "error");
-  } finally {
-    if (shouldProbeAfter) {
-      await probe();
-    }
-  }
+  });
+  port.postMessage({ type: "START_EXPORT", tabId });
 }
 
 exportButton.addEventListener("click", () => {
   void runExport();
+});
+
+window.addEventListener("unload", () => {
+  activePort?.disconnect();
+  activePort = undefined;
 });
 
 void probe();

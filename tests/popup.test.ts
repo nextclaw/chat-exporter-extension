@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import type { ExportFile, ExportResponse, PageStatus } from "../src/shared/types";
+import {
+  EXPORT_PORT_NAME,
+  type DownloadSummary,
+  type PageStatus,
+  type PortMessageFromBackground,
+  type PortMessageFromPopup,
+} from "../src/shared/types";
 
 const READY_STATUS: PageStatus = {
   ok: true,
@@ -10,41 +16,25 @@ const READY_STATUS: PageStatus = {
   conversationId: "popup-fixture",
 };
 
-const TEXT_FILES: ExportFile[] = [
-  {
-    kind: "text",
-    filename: "chatgpt__Popup__popup-fixture.json",
-    mimeType: "application/json;charset=utf-8",
-    content: "{}",
-  },
-  {
-    kind: "text",
-    filename: "chatgpt__Popup__popup-fixture.md",
-    mimeType: "text/markdown;charset=utf-8",
-    content: "# Popup",
-  },
-];
-
-const ASSET_FILE: ExportFile = {
-  kind: "asset",
-  filename: "chatgpt__Popup__popup-fixture_assets/001__image.png",
-  mimeType: "image/png",
-  url: "https://example.com/image.png",
-  assetId: "image-001",
-  originalUrl: "https://example.com/image.png",
-};
+interface MockPort {
+  name: string;
+  postMessage: Mock<(message: PortMessageFromPopup) => void>;
+  disconnect: Mock<() => void>;
+  onMessage: { addListener: Mock; listeners: Array<(message: PortMessageFromBackground) => void> };
+  onDisconnect: { addListener: Mock; listeners: Array<() => void> };
+}
 
 interface ChromeMock {
-  runtime: { lastError?: { message: string } };
+  runtime: {
+    lastError?: { message: string };
+    connect: Mock<(info: { name: string }) => MockPort>;
+  };
   tabs: {
     query: Mock;
     sendMessage: Mock;
   };
   scripting: {
     executeScript: Mock;
-  };
-  downloads: {
-    download: Mock;
   };
 }
 
@@ -61,43 +51,41 @@ function popupMarkup(): string {
   `;
 }
 
-function exportResponse(files: ExportFile[]): ExportResponse {
-  return {
-    ok: true,
-    status: READY_STATUS,
-    bundle: {
-      baseName: "chatgpt__Popup__popup-fixture",
-      conversation: {
-        url: READY_STATUS.url,
-      },
-      assets: [],
-      files,
-    },
-  } as unknown as ExportResponse;
+function createMockPort(name: string): MockPort {
+  const port: MockPort = {
+    name,
+    postMessage: vi.fn(),
+    disconnect: vi.fn(),
+    onMessage: { addListener: vi.fn(), listeners: [] },
+    onDisconnect: { addListener: vi.fn(), listeners: [] },
+  };
+  port.onMessage.addListener.mockImplementation((listener: (message: PortMessageFromBackground) => void) => {
+    port.onMessage.listeners.push(listener);
+  });
+  port.onDisconnect.addListener.mockImplementation((listener: () => void) => {
+    port.onDisconnect.listeners.push(listener);
+  });
+  return port;
 }
 
-function createChromeMock(response: ExportResponse): ChromeMock {
+function createChromeMock(): { chromeMock: ChromeMock; port: MockPort } {
+  const port = createMockPort(EXPORT_PORT_NAME);
   const chromeMock: ChromeMock = {
-    runtime: {},
+    runtime: {
+      connect: vi.fn(() => port),
+    },
     tabs: {
       query: vi.fn(async () => [{ id: 1, url: READY_STATUS.url }]),
-      sendMessage: vi.fn((_tabId: number, message: { type?: string }, callback: (response: unknown) => void) => {
-        if (message.type === "CHAT_EXPORTER_PROBE_PAGE") {
-          callback({ ok: true, status: READY_STATUS });
-          return;
-        }
-        callback(response);
+      sendMessage: vi.fn((_tabId: number, _message: unknown, callback: (response: unknown) => void) => {
+        callback({ ok: true, status: READY_STATUS });
       }),
     },
     scripting: {
       executeScript: vi.fn(async () => undefined),
     },
-    downloads: {
-      download: vi.fn((_options: chrome.downloads.DownloadOptions, callback: () => void) => callback()),
-    },
   };
   vi.stubGlobal("chrome", chromeMock);
-  return chromeMock;
+  return { chromeMock, port };
 }
 
 async function loadPopup(): Promise<void> {
@@ -118,7 +106,17 @@ function elements(): { button: HTMLButtonElement; result: HTMLParagraphElement }
   };
 }
 
-describe("popup export state", () => {
+function emit(port: MockPort, message: PortMessageFromBackground): void {
+  for (const listener of port.onMessage.listeners) {
+    listener(message);
+  }
+}
+
+function fullSummary(): DownloadSummary {
+  return { textFiles: 2, assetFiles: 1, savedAssets: 1, failedAssets: 0 };
+}
+
+describe("popup export port client", () => {
   let closeSpy: Mock;
 
   beforeEach(() => {
@@ -127,14 +125,6 @@ describe("popup export state", () => {
     document.body.innerHTML = popupMarkup();
     closeSpy = vi.fn();
     vi.spyOn(window, "close").mockImplementation(closeSpy);
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn(() => "blob:popup-export"),
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
   });
 
   afterEach(() => {
@@ -144,89 +134,85 @@ describe("popup export state", () => {
     document.body.innerHTML = "";
   });
 
-  it("keeps the button disabled and closes after a fully successful export", async () => {
-    const chromeMock = createChromeMock(exportResponse([...TEXT_FILES, ASSET_FILE]));
-    await loadPopup();
-
-    const { button, result } = elements();
-    button.click();
-    await vi.waitFor(() => expect(button.textContent).toBe("Saved"));
-
-    expect(button.disabled).toBe(true);
-    expect(result.textContent).toBe("Saved 2 text files. Images: 1/1 saved. Closing...");
-    expect(chromeMock.tabs.sendMessage).toHaveBeenCalledTimes(2);
-
-    vi.advanceTimersByTime(1000);
-    expect(closeSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows progress while downloads are being accepted by Chrome", async () => {
-    const chromeMock = createChromeMock(exportResponse([...TEXT_FILES, ASSET_FILE]));
-    const pendingDownloads: Array<() => void> = [];
-    chromeMock.downloads.download.mockImplementation((_options: chrome.downloads.DownloadOptions, callback: () => void) => {
-      pendingDownloads.push(callback);
-    });
+  it("opens a port, sends START_EXPORT, and closes on a fully successful export", async () => {
+    const { chromeMock, port } = createChromeMock();
     await loadPopup();
 
     const { button, result } = elements();
     button.click();
     await flushPromises();
-    expect(result.textContent).toBe("Downloading 0/3 files...");
 
-    pendingDownloads.shift()?.();
-    await vi.waitFor(() => expect(result.textContent).toBe("Downloading 1/3 files..."));
+    expect(chromeMock.runtime.connect).toHaveBeenCalledWith({ name: EXPORT_PORT_NAME });
+    expect(port.postMessage).toHaveBeenCalledWith({ type: "START_EXPORT", tabId: 1 });
+    expect(button.textContent).toBe("Exporting...");
+    expect(button.disabled).toBe(true);
 
-    pendingDownloads.shift()?.();
-    await vi.waitFor(() => expect(result.textContent).toBe("Downloading 2/3 files..."));
+    emit(port, { type: "EXPORT_PROGRESS", completed: 1, total: 3 });
+    expect(result.textContent).toBe("Downloading 1/3 files...");
 
-    pendingDownloads.shift()?.();
-    await vi.waitFor(() => expect(result.textContent).toBe("Saved 2 text files. Images: 1/1 saved. Closing..."));
+    emit(port, { type: "EXPORT_DONE", status: READY_STATUS, summary: fullSummary() });
+    expect(button.textContent).toBe("Saved");
+    expect(button.disabled).toBe(true);
+    expect(result.textContent).toBe("Saved 2 text files. Images: 1/1 saved. Closing...");
+    expect(result.dataset.tone).toBe("success");
+
+    vi.advanceTimersByTime(1000);
+    expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("stays open and offers explicit retry when image downloads partially fail", async () => {
-    const chromeMock = createChromeMock(exportResponse([...TEXT_FILES, ASSET_FILE]));
-    chromeMock.downloads.download.mockImplementation((options: chrome.downloads.DownloadOptions, callback: () => void) => {
-      if (String(options.filename).includes("_assets/")) {
-        chromeMock.runtime.lastError = { message: "asset failed" };
-        callback();
-        chromeMock.runtime.lastError = undefined;
-        return;
-      }
-      callback();
-    });
+  it("stays open and offers Export again when some assets fail", async () => {
+    const { port } = createChromeMock();
     await loadPopup();
 
     const { button, result } = elements();
     button.click();
-    await vi.waitFor(() => expect(button.textContent).toBe("Export again"));
+    await flushPromises();
 
-    expect(closeSpy).not.toHaveBeenCalled();
+    emit(port, {
+      type: "EXPORT_DONE",
+      status: READY_STATUS,
+      summary: { textFiles: 2, assetFiles: 1, savedAssets: 0, failedAssets: 1 },
+    });
+
+    expect(button.textContent).toBe("Export again");
     expect(button.disabled).toBe(false);
     expect(result.dataset.tone).toBe("error");
     expect(result.textContent).toBe("Saved 2 text files. Images: 0/1 saved.");
+    expect(closeSpy).not.toHaveBeenCalled();
   });
 
-  it("restores the normal export button when a text download fails", async () => {
-    const chromeMock = createChromeMock(exportResponse([...TEXT_FILES, ASSET_FILE]));
-    chromeMock.downloads.download.mockImplementation((options: chrome.downloads.DownloadOptions, callback: () => void) => {
-      if (String(options.filename).endsWith(".json")) {
-        chromeMock.runtime.lastError = { message: "json failed" };
-        callback();
-        chromeMock.runtime.lastError = undefined;
-        return;
-      }
-      callback();
-    });
+  it("re-enables export when the worker reports a fatal error", async () => {
+    const { port } = createChromeMock();
     await loadPopup();
 
     const { button, result } = elements();
     button.click();
-    await vi.waitFor(() => expect(result.textContent).toBe("json failed"));
+    await flushPromises();
 
-    expect(closeSpy).not.toHaveBeenCalled();
-    expect(button.disabled).toBe(false);
+    emit(port, { type: "EXPORT_ERROR", message: "json failed" });
+
     expect(button.textContent).toBe("Export");
+    expect(button.disabled).toBe(false);
     expect(result.dataset.tone).toBe("error");
     expect(result.textContent).toBe("json failed");
+    expect(closeSpy).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a fallback error when the port disconnects mid-export", async () => {
+    const { port } = createChromeMock();
+    await loadPopup();
+
+    const { button, result } = elements();
+    button.click();
+    await flushPromises();
+
+    for (const listener of port.onDisconnect.listeners) {
+      listener();
+    }
+
+    expect(button.textContent).toBe("Export");
+    expect(button.disabled).toBe(false);
+    expect(result.dataset.tone).toBe("error");
+    expect(result.textContent).toBe("Background worker disconnected before the export finished.");
   });
 });
