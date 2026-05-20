@@ -12,7 +12,7 @@ export const SITE_DEFINITIONS: readonly SiteDefinition[] = [
   {
     service: "chatgpt",
     siteLabel: SITE_LABELS.chatgpt,
-    origins: ["https://chatgpt.com", "https://chat.openai.com"],
+    origins: ["https://chatgpt.com"],
     conversationPrefix: "c",
     conversationPageLabel: "ChatGPT conversation page",
   },

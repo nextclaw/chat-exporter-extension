@@ -5,7 +5,10 @@ import { parseChatGptConversationUrl, parseConversationUrl } from "../src/shared
 describe("parseChatGptConversationUrl", () => {
   it("accepts current ChatGPT conversation pages", () => {
     expect(parseChatGptConversationUrl("https://chatgpt.com/c/abc-123?model=gpt-5").ok).toBe(true);
-    expect(parseChatGptConversationUrl("https://chat.openai.com/c/abc_123").ok).toBe(true);
+  });
+
+  it("no longer accepts the retired chat.openai.com origin", () => {
+    expect(parseChatGptConversationUrl("https://chat.openai.com/c/abc_123").ok).toBe(false);
   });
 
   it("extracts the conversation id from a path segment", () => {

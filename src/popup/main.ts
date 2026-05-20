@@ -74,6 +74,8 @@ async function injectContentScript(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({
     target: { tabId },
     files: ["assets/content.js"],
+    world: "ISOLATED",
+    injectImmediately: false,
   });
 }
 
@@ -215,9 +217,13 @@ async function probe(): Promise<void> {
     } satisfies ProbePageMessage);
     setExportButton(popupState === "partial-failed" ? "Export again" : "Export", !response.status.ok);
     setPageStatus(pageStatusLabel(response.status));
-  } catch {
+  } catch (error) {
     setExportButton(popupState === "partial-failed" ? "Export again" : "Export", true);
-    setPageStatus("Open a supported conversation page.");
+    setPageStatus(
+      error instanceof Error && error.message
+        ? `Content script unavailable: ${error.message}. Reload the page and try again.`
+        : "Content script unavailable. Reload the page and try again.",
+    );
   }
 }
 
