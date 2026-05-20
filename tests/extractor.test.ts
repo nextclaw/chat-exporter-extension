@@ -73,6 +73,23 @@ describe("extractRolePayloads", () => {
     expect(payloads[1].dom_markdown).toContain("```ts");
   });
 
+  it("preserves code wrapped in a button while still stripping plain-text buttons", async () => {
+    document.body.innerHTML = `
+      <article data-message-author-role="assistant">
+        <div class="markdown">
+          <p>Inline reply with code-bearing button:</p>
+          <button><pre><code class="language-py">print("kept")</code></pre></button>
+          <button>Copy</button>
+        </div>
+      </article>
+    `;
+
+    const [payload] = await extractRolePayloads();
+    expect(payload.dom_markdown).toContain("print(\"kept\")");
+    expect(payload.dom_markdown).toContain("```py");
+    expect(payload.dom_text).not.toContain("Copy");
+  });
+
   it("normalizes media and math placeholders", async () => {
     document.body.innerHTML = `
       <article data-message-author-role="assistant">

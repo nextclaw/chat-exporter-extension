@@ -55,7 +55,12 @@ export function sanitizeHtmlFragment(html: string | undefined): string {
   const template = document.createElement("template");
   template.innerHTML = html;
   const root = template.content;
-  root.querySelectorAll("script, style, noscript, textarea, svg, button").forEach((node) => node.remove());
+  root.querySelectorAll("script, style, noscript, textarea, svg").forEach((node) => node.remove());
+  root.querySelectorAll("button").forEach((node) => {
+    if (!node.querySelector("pre, code")) {
+      node.remove();
+    }
+  });
   root.querySelectorAll(".sr-only, [aria-hidden='true']").forEach((node) => node.remove());
   return Array.from(root.childNodes)
     .map((node) => serializeNode(node))
