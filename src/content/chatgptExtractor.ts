@@ -490,31 +490,51 @@ function compareDocumentOrder(left: Element, right: Element): number {
 
 function compactRecords(records: Array<{ role: Role; node: Element; text: string }>): Array<{ role: Role; node: Element; text: string }> {
   const compact: Array<{ role: Role; node: Element; text: string }> = [];
+  const indexByExactKey = new Map<string, number>();
+  const exactKey = (role: Role, text: string): string => `${role} ${text}`;
+  const replaceAt = (index: number, replacement: { role: Role; node: Element; text: string }): void => {
+    const previous = compact[index];
+    if (previous && previous !== replacement) {
+      const previousKey = exactKey(previous.role, previous.text);
+      if (indexByExactKey.get(previousKey) === index) {
+        indexByExactKey.delete(previousKey);
+      }
+    }
+    compact[index] = replacement;
+    indexByExactKey.set(exactKey(replacement.role, replacement.text), index);
+  };
+
   for (const record of records.sort((left, right) => compareDocumentOrder(left.node, right.node))) {
-    const duplicateIndex = compact.findIndex((existing) => {
-      if (existing.role !== record.role) {
-        return false;
-      }
-      if (existing.node.contains(record.node) || record.node.contains(existing.node) || existing.text === record.text) {
-        return true;
-      }
-      const shorter = existing.text.length < record.text.length ? existing.text : record.text;
-      const longer = existing.text.length < record.text.length ? record.text : existing.text;
-      return shorter.length > 120 && longer.includes(shorter);
-    });
+    let duplicateIndex = indexByExactKey.get(exactKey(record.role, record.text)) ?? -1;
     if (duplicateIndex === -1) {
+      duplicateIndex = compact.findIndex((existing) => {
+        if (existing.role !== record.role) {
+          return false;
+        }
+        if (existing.node.contains(record.node) || record.node.contains(existing.node)) {
+          return true;
+        }
+        const shorter = existing.text.length < record.text.length ? existing.text : record.text;
+        const longer = existing.text.length < record.text.length ? record.text : existing.text;
+        return shorter.length > 120 && longer.includes(shorter);
+      });
+    }
+    if (duplicateIndex === -1) {
+      indexByExactKey.set(exactKey(record.role, record.text), compact.length);
       compact.push(record);
       continue;
     }
     const existing = compact[duplicateIndex];
     if (existing.node.contains(record.node) && existing.node !== record.node) {
-      compact[duplicateIndex] = record;
+      replaceAt(duplicateIndex, record);
       continue;
     }
     if (!record.node.contains(existing.node)) {
       const existingSize = existing.node.querySelectorAll("*").length;
       const recordSize = record.node.querySelectorAll("*").length;
-      compact[duplicateIndex] = recordSize < existingSize ? record : existing;
+      if (recordSize < existingSize) {
+        replaceAt(duplicateIndex, record);
+      }
     }
   }
   return compact.sort((left, right) => compareDocumentOrder(left.node, right.node));

@@ -384,6 +384,35 @@ describe("extractClaudeRolePayloads", () => {
     document.body.innerHTML = "";
   });
 
+  it("deduplicates separate assistant nodes that share the exact same rendered text", async () => {
+    document.body.innerHTML = `
+      <div data-testid="user-message">What is the answer?</div>
+      <div class="font-claude-response">
+        <div class="standard-markdown"><p>The answer is forty-two.</p></div>
+      </div>
+      <div class="font-claude-response">
+        <div class="progressive-markdown"><p>The answer is forty-two.</p></div>
+      </div>
+    `;
+
+    const payloads = await extractClaudeRolePayloads();
+    expect(payloads.map((p) => p.role)).toEqual(["user", "assistant"]);
+    expect(payloads[1].dom_text).toContain("forty-two");
+  });
+
+  it("keeps the inner node when a wrapping assistant container repeats the same text", async () => {
+    document.body.innerHTML = `
+      <div data-testid="user-message">Wrap?</div>
+      <div class="prose">
+        <div class="standard-markdown"><p>Wrapped reply.</p></div>
+      </div>
+    `;
+
+    const payloads = await extractClaudeRolePayloads();
+    expect(payloads).toHaveLength(2);
+    expect(payloads[1].dom_text).toBe("Wrapped reply.");
+  });
+
   it("extracts Claude user and assistant messages", async () => {
     document.body.innerHTML = `
       <div data-testid="user-message">Please summarize this.</div>

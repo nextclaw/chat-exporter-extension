@@ -99,6 +99,12 @@ Host permissions / content script matches：
 Limited to ChatGPT, Gemini, and Claude conversation pages so the extension can read the current conversation DOM for the export requested by the user.
 ```
 
+## Background service worker
+
+```text
+The extension registers a Manifest V3 background service worker (assets/background.js) that coordinates the export run after the user clicks Export. It receives the export request from the popup over a runtime port, drives the existing content script over chrome.tabs.sendMessage, encodes the generated text files as data: URLs, and schedules every download through chrome.downloads.download. Tracking each download via chrome.downloads.onChanged is what lets a long export keep running and complete normally even if the popup closes mid-flight. The service worker does not open network connections, does not load remote code, and does not register any persistent listeners that run when the popup is not open.
+```
+
 ## 测试说明
 
 ```text
