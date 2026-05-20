@@ -17,7 +17,7 @@
 
 ## 0.1.5 发布说明
 
-- **弹窗预览**：导出前 popup 状态行显示对话标题与消息数，防止误导错 tab。
+- **弹窗预览**：导出前 popup 状态行显示对话标题与轮数（按 user 消息计算，与导出文件 frontmatter 的 `turns:` 字段一致；assistant 多次重试仍算同一轮），防止误导错 tab。
 - **键盘快捷键 + 右键菜单**：`Ctrl/Cmd+Shift+E` 一键导出当前 tab；受支持页右键菜单加 "Export this chat"。两条直触发路径不开 popup，进度走工具栏 badge（"…" / "✓" / "!"），结果摘要写到 `chrome.storage.session` 下次打开 popup 时显示。
 - **HTML 导出**：格式选择器加 HTML 选项；输出自包含 print-friendly 文档，浏览器打开后 Cmd+P → Save as PDF 即可。这是 PDF 需求的"不绑架"实现，未引入新依赖。
 - **资产下载重试**：资产单文件失败前最多重试 2 次（指数退避 500ms/1500ms），文本文件仍是失败即终止。

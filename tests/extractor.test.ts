@@ -45,7 +45,7 @@ describe("probeCurrentPageSummary", () => {
     document.head.innerHTML = "";
   });
 
-  it("populates title and messageCount on a ChatGPT conversation", () => {
+  it("populates title and turnCount on a ChatGPT conversation", () => {
     setUrl("https://chatgpt.com/c/summary-fixture");
     document.title = "How to read a book — ChatGPT";
     document.body.innerHTML = `
@@ -67,8 +67,34 @@ describe("probeCurrentPageSummary", () => {
       ok: true,
       service: "chatgpt",
       title: "How to read a book",
-      messageCount: 2,
+      turnCount: 1,
     });
+  });
+
+  it("counts a turn once even when an assistant has retry variants", () => {
+    setUrl("https://chatgpt.com/c/retry-fixture");
+    document.title = "Retry session";
+    document.body.innerHTML = `
+      <main>
+        <div data-testid="conversation-turn-1">
+          <article data-message-author-role="user">
+            <div class="whitespace-pre-wrap">Q1</div>
+          </article>
+        </div>
+        <div data-testid="conversation-turn-2">
+          <article data-message-author-role="assistant">
+            <div class="markdown"><p>A1 variant 1</p></div>
+          </article>
+        </div>
+        <div data-testid="conversation-turn-3">
+          <article data-message-author-role="assistant">
+            <div class="markdown"><p>A1 variant 2</p></div>
+          </article>
+        </div>
+      </main>
+    `;
+
+    expect(probeCurrentPageSummary().turnCount).toBe(1);
   });
 
   it("falls back to base status when no usable title is found", () => {
@@ -79,7 +105,7 @@ describe("probeCurrentPageSummary", () => {
     const summary = probeCurrentPageSummary();
     expect(summary.ok).toBe(true);
     expect(summary.title).toBeUndefined();
-    expect(summary.messageCount).toBe(0);
+    expect(summary.turnCount).toBe(0);
   });
 
   it("returns the base error status when the URL is not supported", () => {

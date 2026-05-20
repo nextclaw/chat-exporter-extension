@@ -12,8 +12,10 @@ expect occasional opt-in default changes before `0.2.0`.
 ## [0.1.5] - 2026-05-22
 
 ### Added
-- Popup now shows the conversation title and message count above the
-  Export button so it is clear which chat is being exported.
+- Popup now shows the conversation title and turn count above the
+  Export button so it is clear which chat is being exported. The turn
+  count matches the `turns:` field in the exported file's frontmatter
+  even when a turn has multiple assistant retry variants.
 - Keyboard shortcut `Ctrl/Cmd+Shift+E` runs the export against the active
   tab without opening the popup.
 - "Export this chat" appears in the right-click menu on supported pages.

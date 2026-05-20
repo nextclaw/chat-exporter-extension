@@ -172,26 +172,35 @@ export function probeCurrentPage(): PageStatus {
   return pageStatusFromUrl(location.href);
 }
 
-function summaryMessageCount(service: Service): number {
+function summaryTurnCount(service: Service): number {
+  // A turn is one user prompt (regardless of how many assistant retries / variants
+  // the model produced for it). This mirrors the `turns:` field that
+  // renderConversationMarkdown writes into the exported file's frontmatter so the
+  // popup label and the file agree even when a turn contains retries.
+  let users = 0;
+  let assistants = 0;
   if (service === "chatgpt") {
-    const turns = document.querySelectorAll("[data-testid^='conversation-turn-']").length;
-    if (turns > 0) {
-      return turns;
-    }
-    return document.querySelectorAll("[data-message-author-role]").length;
-  }
-  if (service === "gemini") {
-    return document.querySelectorAll(
-      "user-query, model-response, [data-test-id*='user-query' i], [data-testid*='user-query' i]",
+    users = document.querySelectorAll("[data-message-author-role='user']").length;
+    assistants = document.querySelectorAll("[data-message-author-role='assistant']").length;
+  } else if (service === "gemini") {
+    users = document.querySelectorAll(
+      "user-query, [data-test-id*='user-query' i], [data-testid*='user-query' i]",
+    ).length;
+    assistants = document.querySelectorAll(
+      "model-response, .model-response-text, .response-content",
+    ).length;
+  } else {
+    users = document.querySelectorAll(
+      "[data-testid='user-message'], [data-testid*='user-message' i]",
+    ).length;
+    assistants = document.querySelectorAll(
+      ".font-claude-response, [data-testid*='assistant' i]",
     ).length;
   }
-  const users = document.querySelectorAll(
-    "[data-testid='user-message'], [data-testid*='user-message' i]",
-  ).length;
-  const assistants = document.querySelectorAll(
-    ".font-claude-response, [data-testid*='assistant' i]",
-  ).length;
-  return users + assistants;
+  if (users > 0) {
+    return users;
+  }
+  return assistants > 0 ? 1 : 0;
 }
 
 export function probeCurrentPageSummary(): PageStatus {
@@ -202,8 +211,8 @@ export function probeCurrentPageSummary(): PageStatus {
   try {
     const selectedTitle = selectTitle(titleCandidates(base.url, base.service), base.service);
     const title = selectedTitle.source === "fallback" ? undefined : selectedTitle.title;
-    const messageCount = summaryMessageCount(base.service);
-    return { ...base, title, messageCount };
+    const turnCount = summaryTurnCount(base.service);
+    return { ...base, title, turnCount };
   } catch {
     return base;
   }
