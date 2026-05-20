@@ -1,4 +1,5 @@
 import { textToDataUrl } from "../shared/encode";
+import { withRetry } from "../shared/retry";
 import {
   ALL_EXPORT_FORMATS,
   EXPORT_PORT_NAME,
@@ -10,6 +11,9 @@ import {
   type StartExportMessage,
 } from "../shared/types";
 import { parseConversationUrl } from "../shared/url";
+
+const ASSET_DOWNLOAD_ATTEMPTS = 3;
+const ASSET_RETRY_BASE_DELAY_MS = 500;
 
 type Sender = (message: PortMessageFromBackground) => void;
 
@@ -86,13 +90,20 @@ async function runExport(message: StartExportMessage, send: Sender): Promise<voi
 
   for (const file of files) {
     const isText = file.kind === "text";
-    try {
-      const url = isText ? textToDataUrl(file.content, file.mimeType) : file.url;
+    const url = isText ? textToDataUrl(file.content, file.mimeType) : file.url;
+    const runDownload = async (): Promise<void> => {
       const downloadId = await startDownload({ url, filename: file.filename, saveAs: false });
       await waitForDownload(downloadId);
+    };
+    try {
       if (isText) {
+        await runDownload();
         summary.textFiles += 1;
       } else {
+        await withRetry(runDownload, {
+          attempts: ASSET_DOWNLOAD_ATTEMPTS,
+          baseDelayMs: ASSET_RETRY_BASE_DELAY_MS,
+        });
         summary.assetFiles += 1;
         summary.savedAssets += 1;
       }
