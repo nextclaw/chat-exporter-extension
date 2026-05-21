@@ -113,8 +113,8 @@ function pageStatusLabel(status: PageStatus): string {
     return status.reason ?? "Current page is not supported.";
   }
   const head = status.title ? truncateTitle(status.title) : `${status.siteLabel ?? "Chat"} ${status.conversationId}`;
-  const count = typeof status.messageCount === "number" && status.messageCount > 0
-    ? ` · ${status.messageCount} ${status.messageCount === 1 ? "message" : "messages"}`
+  const count = typeof status.turnCount === "number" && status.turnCount > 0
+    ? ` · ${status.turnCount} ${status.turnCount === 1 ? "turn" : "turns"}`
     : "";
   return `Ready: ${head}${count}`;
 }

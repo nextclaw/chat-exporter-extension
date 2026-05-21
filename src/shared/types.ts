@@ -112,7 +112,7 @@ export interface PageStatus {
   siteLabel?: string;
   conversationId?: string;
   title?: string;
-  messageCount?: number;
+  turnCount?: number;
   reason?: string;
 }
 

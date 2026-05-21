@@ -16,7 +16,7 @@ const READY_STATUS: PageStatus = {
   siteLabel: "ChatGPT",
   conversationId: "popup-fixture",
   title: "Popup Fixture Chat",
-  messageCount: 4,
+  turnCount: 4,
 };
 
 interface MockPort {
@@ -179,10 +179,10 @@ describe("popup page status rendering", () => {
     document.body.innerHTML = "";
   });
 
-  it("renders the conversation title and message count when probe returns them", async () => {
+  it("renders the conversation title and turn count when probe returns them", async () => {
     createChromeMock();
     await loadPopup();
-    expect(elements().status.textContent).toBe("Ready: Popup Fixture Chat · 4 messages");
+    expect(elements().status.textContent).toBe("Ready: Popup Fixture Chat · 4 turns");
   });
 
   it("falls back to siteLabel + conversationId when probe omits the title", async () => {
@@ -226,7 +226,7 @@ describe("popup page status rendering", () => {
         sendMessage: vi.fn((_id: number, _msg: unknown, cb: (response: unknown) => void) => {
           cb({
             ok: true,
-            status: { ...READY_STATUS, title: longTitle, messageCount: 8 },
+            status: { ...READY_STATUS, title: longTitle, turnCount: 8 },
           });
         }),
       },
@@ -239,7 +239,7 @@ describe("popup page status rendering", () => {
       },
     });
     await loadPopup();
-    expect(elements().status.textContent).toBe(`Ready: ${"A".repeat(59)}… · 8 messages`);
+    expect(elements().status.textContent).toBe(`Ready: ${"A".repeat(59)}… · 8 turns`);
   });
 });
 

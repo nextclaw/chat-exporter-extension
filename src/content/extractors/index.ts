@@ -172,26 +172,44 @@ export function probeCurrentPage(): PageStatus {
   return pageStatusFromUrl(location.href);
 }
 
-function summaryMessageCount(service: Service): number {
+function summaryTurnCount(service: Service): number | undefined {
+  // A turn is one user prompt (regardless of how many assistant retries / variants
+  // the model produced for it). This mirrors the `turns:` field that
+  // renderConversationMarkdown writes into the exported file's frontmatter so the
+  // popup label and the file agree even when a turn contains retries.
   if (service === "chatgpt") {
-    const turns = document.querySelectorAll("[data-testid^='conversation-turn-']").length;
-    if (turns > 0) {
-      return turns;
+    // ChatGPT renders the conversation through a virtual list: placeholders exist
+    // for every turn but only the ones near the viewport mount their message
+    // content. When there are unmounted turns any count we derive here would
+    // undershoot, so return undefined and let the popup omit the count rather
+    // than show a wrong number.
+    const placeholders = document.querySelectorAll("[data-testid^='conversation-turn-']").length;
+    const mounted = document.querySelectorAll("[data-message-author-role]").length;
+    if (placeholders > mounted) {
+      return undefined;
     }
-    return document.querySelectorAll("[data-message-author-role]").length;
+    const users = document.querySelectorAll("[data-message-author-role='user']").length;
+    if (users > 0) {
+      return users;
+    }
+    return mounted > 0 ? 1 : 0;
   }
   if (service === "gemini") {
-    return document.querySelectorAll(
-      "user-query, model-response, [data-test-id*='user-query' i], [data-testid*='user-query' i]",
+    const users = document.querySelectorAll(
+      "user-query, [data-test-id*='user-query' i], [data-testid*='user-query' i]",
     ).length;
+    if (users > 0) {
+      return users;
+    }
+    return document.querySelectorAll("model-response, .model-response-text, .response-content").length > 0 ? 1 : 0;
   }
   const users = document.querySelectorAll(
     "[data-testid='user-message'], [data-testid*='user-message' i]",
   ).length;
-  const assistants = document.querySelectorAll(
-    ".font-claude-response, [data-testid*='assistant' i]",
-  ).length;
-  return users + assistants;
+  if (users > 0) {
+    return users;
+  }
+  return document.querySelectorAll(".font-claude-response, [data-testid*='assistant' i]").length > 0 ? 1 : 0;
 }
 
 export function probeCurrentPageSummary(): PageStatus {
@@ -202,8 +220,8 @@ export function probeCurrentPageSummary(): PageStatus {
   try {
     const selectedTitle = selectTitle(titleCandidates(base.url, base.service), base.service);
     const title = selectedTitle.source === "fallback" ? undefined : selectedTitle.title;
-    const messageCount = summaryMessageCount(base.service);
-    return { ...base, title, messageCount };
+    const turnCount = summaryTurnCount(base.service);
+    return { ...base, title, turnCount };
   } catch {
     return base;
   }
