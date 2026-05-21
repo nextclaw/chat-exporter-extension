@@ -13,11 +13,29 @@ import {
   type RolePayload,
 } from "./shared";
 
+function claudeArtifactLabel(card: Element): string {
+  // Title via the View / Download overlay button aria-label — semantic and stable,
+  // unlike the Tailwind utility classes around the title text.
+  const labelled = card.querySelector("button[aria-label^='View '], button[aria-label^='Download ']");
+  let title = cleanText(labelled?.getAttribute("aria-label")).replace(/^(?:View|Download)\s+/i, "");
+  if (!title) {
+    title = getElementText(card).split("\n").map((line) => line.trim()).filter(Boolean)[0] ?? "";
+  }
+  title = title.slice(0, 120);
+  // Type line looks like "Document · MD"; use the middot as the heuristic and skip
+  // the title line and the "Download" button label.
+  const typeLine = getElementText(card)
+    .split("\n")
+    .map((line) => cleanText(line))
+    .find((line) => line.includes("·") && line !== title);
+  return typeLine ? `${title} (${typeLine.replace(/\s*·\s*/g, " · ")})` : title;
+}
+
 function normalizeClaudeSpecialBlocks(root: ParentNode): void {
-  root.querySelectorAll("[data-testid*='artifact' i], .artifact, [data-testid*='attachment' i], .attachment").forEach((node) => {
+  root.querySelectorAll("[class~='group/artifact-block'], [data-testid*='artifact' i], .artifact, [data-testid*='attachment' i], .attachment").forEach((node) => {
     const replacement = document.createElement("p");
-    const text = getElementText(node).slice(0, 80);
-    replacement.textContent = text ? `[Attachment: ${text}]` : "[Attachment]";
+    const label = claudeArtifactLabel(node);
+    replacement.textContent = label ? `[Attachment: ${label}]` : "[Attachment]";
     node.replaceWith(replacement);
   });
   root.querySelectorAll("[data-testid*='thinking' i], details").forEach((node) => {
