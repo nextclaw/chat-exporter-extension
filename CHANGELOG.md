@@ -15,7 +15,9 @@ expect occasional opt-in default changes before `0.2.0`.
 - Popup now shows the conversation title and turn count above the
   Export button so it is clear which chat is being exported. The turn
   count matches the `turns:` field in the exported file's frontmatter
-  even when a turn has multiple assistant retry variants.
+  even when a turn has multiple assistant retry variants. On long
+  ChatGPT conversations whose virtual list has not mounted every turn
+  the count is omitted rather than shown wrong.
 - Keyboard shortcut `Ctrl/Cmd+Shift+E` runs the export against the active
   tab without opening the popup.
 - "Export this chat" appears in the right-click menu on supported pages.

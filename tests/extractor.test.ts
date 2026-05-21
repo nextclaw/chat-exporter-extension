@@ -97,6 +97,27 @@ describe("probeCurrentPageSummary", () => {
     expect(probeCurrentPageSummary().turnCount).toBe(1);
   });
 
+  it("omits turnCount on a virtualized ChatGPT conversation with unmounted turns", () => {
+    setUrl("https://chatgpt.com/c/virtualized-fixture");
+    document.title = "Long chat";
+    document.body.innerHTML = `
+      <main>
+        <div data-testid="conversation-turn-1">
+          <article data-message-author-role="user"><div class="whitespace-pre-wrap">Q1</div></article>
+        </div>
+        <div data-testid="conversation-turn-2">
+          <article data-message-author-role="assistant"><div class="markdown"><p>A1</p></div></article>
+        </div>
+        <div data-testid="conversation-turn-3"></div>
+        <div data-testid="conversation-turn-4"></div>
+      </main>
+    `;
+
+    const summary = probeCurrentPageSummary();
+    expect(summary.ok).toBe(true);
+    expect(summary.turnCount).toBeUndefined();
+  });
+
   it("falls back to base status when no usable title is found", () => {
     setUrl("https://chatgpt.com/c/no-title-fixture");
     document.title = "New chat";
