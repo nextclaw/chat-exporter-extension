@@ -46,6 +46,30 @@ function normalizeClaudeSpecialBlocks(root: ParentNode): void {
   });
 }
 
+const ARTIFACT_SELECTOR = "[class~='group/artifact-block']";
+
+// Claude renders an artifact card as a sibling of the assistant's .standard-markdown
+// content, inside the same turn container. compactRecords keeps the inner
+// .standard-markdown node and drops the outer container, so the card never reaches
+// the clone. Recover it here: for each captured assistant node, find artifact cards
+// elsewhere in its turn and append attachment placeholders to the clone.
+function appendClaudeArtifacts(clone: Element, recordNode: Element, seen: Set<Element>): void {
+  const turn = recordNode.closest(".font-claude-response, [data-testid*='assistant' i], [data-testid*='claude' i]");
+  if (!turn) {
+    return;
+  }
+  for (const card of Array.from(turn.querySelectorAll(ARTIFACT_SELECTOR))) {
+    if (recordNode.contains(card) || seen.has(card)) {
+      continue;
+    }
+    seen.add(card);
+    const label = claudeArtifactLabel(card);
+    const paragraph = document.createElement("p");
+    paragraph.textContent = label ? `[Attachment: ${label}]` : "[Attachment]";
+    clone.append(paragraph);
+  }
+}
+
 function removeClaudeNoise(root: ParentNode): void {
   removeNoise(root);
   root.querySelectorAll("[aria-hidden='true'], .sr-only").forEach((node) => node.remove());
@@ -83,6 +107,7 @@ export async function extractClaudeRolePayloads(root: ParentNode = document, ass
   });
 
   const payloads: RolePayload[] = [];
+  const seenArtifacts = new Set<Element>();
   for (const record of compactRecords(records)) {
     const clone = record.node.cloneNode(true) as Element;
     await normalizeMedia(clone, assetCollector);
@@ -90,6 +115,9 @@ export async function extractClaudeRolePayloads(root: ParentNode = document, ass
     normalizeClaudeSpecialBlocks(clone);
     normalizeCodeBlocks(clone);
     removeClaudeNoise(clone);
+    if (record.role === "assistant") {
+      appendClaudeArtifacts(clone, record.node, seenArtifacts);
+    }
     const domHtml = cleanText(clone.innerHTML || clone.outerHTML);
     payloads.push({
       role: record.role,
