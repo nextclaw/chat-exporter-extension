@@ -536,4 +536,86 @@ describe("extractClaudeRolePayloads", () => {
     expect(payloads[1].dom_markdown).toContain("```");
     expect(payloads[1].dom_text).not.toContain("Copy");
   });
+
+  it("renders a Claude artifact card as an attachment placeholder, not body text", async () => {
+    document.body.innerHTML = `
+      <div data-testid="user-message">Summarize the framework.</div>
+      <div class="font-claude-response">
+        <div class="standard-markdown">
+          <p>Here is the summary:</p>
+          <div class="group/artifact-block">
+            <button type="button" aria-label="View V6 4 framework summary"></button>
+            <div class="artifact-block-cell">
+              <div class="leading-tight text-sm line-clamp-1">V6 4 framework summary</div>
+              <div class="text-xs line-clamp-1 text-text-400">Document<span class="opacity-50"> · </span>MD</div>
+              <button aria-label="Download V6 4 framework summary">Download</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const payloads = await extractClaudeRolePayloads();
+    const assistant = payloads[1];
+    expect(assistant.dom_markdown).toContain("Here is the summary:");
+    expect(assistant.dom_markdown).toContain("[Attachment: V6 4 framework summary");
+    expect(assistant.dom_text).not.toContain("Download");
+    expect(assistant.dom_markdown).not.toContain("Download");
+  });
+
+  it("recovers an artifact card rendered as a sibling of the markdown body", async () => {
+    // Mirrors the real claude.ai structure: .standard-markdown and the artifact
+    // card live in separate children of the turn container, so compactRecords keeps
+    // the markdown and drops the container that holds the card.
+    document.body.innerHTML = `
+      <div data-testid="user-message">Summarize the framework.</div>
+      <div class="font-claude-response">
+        <div class="row-start-1 col-start-1">
+          <div>
+            <div class="standard-markdown">
+              <p>V6.4 framework summary generated.</p>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 py-2">
+            <div class="group/artifact-block">
+              <button type="button" aria-label="View V6 4 framework summary"></button>
+              <div class="artifact-block-cell">
+                <div class="leading-tight text-sm line-clamp-1">V6 4 framework summary</div>
+                <div class="text-xs line-clamp-1 text-text-400">Document<span class="opacity-50"> · </span>MD</div>
+                <button aria-label="Download V6 4 framework summary">Download</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const payloads = await extractClaudeRolePayloads();
+    const assistant = payloads.find((p) => p.role === "assistant");
+    expect(assistant?.dom_markdown).toContain("V6.4 framework summary generated.");
+    expect(assistant?.dom_markdown).toContain("[Attachment: V6 4 framework summary");
+    expect(assistant?.dom_text).not.toContain("Download");
+    // the placeholder must appear exactly once, not duplicated across records
+    expect(assistant?.dom_markdown.match(/\[Attachment: V6 4 framework summary/g) ?? []).toHaveLength(1);
+  });
+
+  it("omits the type suffix when an artifact card only carries a title", async () => {
+    document.body.innerHTML = `
+      <div data-testid="user-message">Make something.</div>
+      <div class="font-claude-response">
+        <div class="standard-markdown">
+          <div class="group/artifact-block">
+            <button type="button" aria-label="View Untitled draft"></button>
+            <div class="artifact-block-cell">
+              <div class="text-sm">Untitled draft</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const [, assistant] = await extractClaudeRolePayloads();
+    expect(assistant.dom_markdown).toContain("[Attachment: Untitled draft]");
+    expect(assistant.dom_markdown).not.toContain("Document");
+  });
 });

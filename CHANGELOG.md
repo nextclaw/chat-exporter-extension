@@ -9,6 +9,18 @@ expect occasional opt-in default changes before `0.2.0`.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-05-22
+
+### Fixed
+- Claude artifact cards are now recognized (they use `group/artifact-block`,
+  which the previous selector missed) and rendered as a clean
+  `[Attachment: <title> (<type>)]` placeholder instead of leaking the card's
+  title, type, and "Download" button text into the transcript body. The
+  artifact body cannot be captured locally — it lives in a side panel that
+  only opens on click, and the extension never clicks page elements — so the
+  placeholder is a reference, consistent with how no-href file tiles are
+  handled.
+
 ## [0.1.5] - 2026-05-22
 
 ### Added
@@ -82,7 +94,8 @@ expect occasional opt-in default changes before `0.2.0`.
 Initial public release on the Chrome Web Store with Markdown + JSON
 export of the currently open ChatGPT, Gemini, or Claude conversation.
 
-[Unreleased]: https://github.com/nextclaw/chat-exporter-extension/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/nextclaw/chat-exporter-extension/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/nextclaw/chat-exporter-extension/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/nextclaw/chat-exporter-extension/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/nextclaw/chat-exporter-extension/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/nextclaw/chat-exporter-extension/compare/v0.1.2...v0.1.3

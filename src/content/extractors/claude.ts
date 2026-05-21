@@ -13,11 +13,29 @@ import {
   type RolePayload,
 } from "./shared";
 
+function claudeArtifactLabel(card: Element): string {
+  // Title via the View / Download overlay button aria-label — semantic and stable,
+  // unlike the Tailwind utility classes around the title text.
+  const labelled = card.querySelector("button[aria-label^='View '], button[aria-label^='Download ']");
+  let title = cleanText(labelled?.getAttribute("aria-label")).replace(/^(?:View|Download)\s+/i, "");
+  if (!title) {
+    title = getElementText(card).split("\n").map((line) => line.trim()).filter(Boolean)[0] ?? "";
+  }
+  title = title.slice(0, 120);
+  // Type line looks like "Document · MD"; use the middot as the heuristic and skip
+  // the title line and the "Download" button label.
+  const typeLine = getElementText(card)
+    .split("\n")
+    .map((line) => cleanText(line))
+    .find((line) => line.includes("·") && line !== title);
+  return typeLine ? `${title} (${typeLine.replace(/\s*·\s*/g, " · ")})` : title;
+}
+
 function normalizeClaudeSpecialBlocks(root: ParentNode): void {
-  root.querySelectorAll("[data-testid*='artifact' i], .artifact, [data-testid*='attachment' i], .attachment").forEach((node) => {
+  root.querySelectorAll("[class~='group/artifact-block'], [data-testid*='artifact' i], .artifact, [data-testid*='attachment' i], .attachment").forEach((node) => {
     const replacement = document.createElement("p");
-    const text = getElementText(node).slice(0, 80);
-    replacement.textContent = text ? `[Attachment: ${text}]` : "[Attachment]";
+    const label = claudeArtifactLabel(node);
+    replacement.textContent = label ? `[Attachment: ${label}]` : "[Attachment]";
     node.replaceWith(replacement);
   });
   root.querySelectorAll("[data-testid*='thinking' i], details").forEach((node) => {
@@ -26,6 +44,30 @@ function normalizeClaudeSpecialBlocks(root: ParentNode): void {
     replacement.textContent = text ? `[Thinking: ${text}]` : "[Thinking block]";
     node.replaceWith(replacement);
   });
+}
+
+const ARTIFACT_SELECTOR = "[class~='group/artifact-block']";
+
+// Claude renders an artifact card as a sibling of the assistant's .standard-markdown
+// content, inside the same turn container. compactRecords keeps the inner
+// .standard-markdown node and drops the outer container, so the card never reaches
+// the clone. Recover it here: for each captured assistant node, find artifact cards
+// elsewhere in its turn and append attachment placeholders to the clone.
+function appendClaudeArtifacts(clone: Element, recordNode: Element, seen: Set<Element>): void {
+  const turn = recordNode.closest(".font-claude-response, [data-testid*='assistant' i], [data-testid*='claude' i]");
+  if (!turn) {
+    return;
+  }
+  for (const card of Array.from(turn.querySelectorAll(ARTIFACT_SELECTOR))) {
+    if (recordNode.contains(card) || seen.has(card)) {
+      continue;
+    }
+    seen.add(card);
+    const label = claudeArtifactLabel(card);
+    const paragraph = document.createElement("p");
+    paragraph.textContent = label ? `[Attachment: ${label}]` : "[Attachment]";
+    clone.append(paragraph);
+  }
 }
 
 function removeClaudeNoise(root: ParentNode): void {
@@ -65,6 +107,7 @@ export async function extractClaudeRolePayloads(root: ParentNode = document, ass
   });
 
   const payloads: RolePayload[] = [];
+  const seenArtifacts = new Set<Element>();
   for (const record of compactRecords(records)) {
     const clone = record.node.cloneNode(true) as Element;
     await normalizeMedia(clone, assetCollector);
@@ -72,6 +115,9 @@ export async function extractClaudeRolePayloads(root: ParentNode = document, ass
     normalizeClaudeSpecialBlocks(clone);
     normalizeCodeBlocks(clone);
     removeClaudeNoise(clone);
+    if (record.role === "assistant") {
+      appendClaudeArtifacts(clone, record.node, seenArtifacts);
+    }
     const domHtml = cleanText(clone.innerHTML || clone.outerHTML);
     payloads.push({
       role: record.role,
